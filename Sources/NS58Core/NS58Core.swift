@@ -261,6 +261,13 @@ public enum NS58FAT12 {
         _ image: Data,
         firmware: Data
     ) throws {
+        guard firmware.count == NS58Constants.firmwareSize else {
+            throw NS58Error.invalid("unexpected firmware length")
+        }
+        guard image.count >= (NS58Constants.firmwareStartLBA + NS58Constants.firmwareBlocks)
+            * NS58Constants.bytesPerSector else {
+            throw NS58Error.invalid("updated image is too short")
+        }
         let sector = NS58Constants.bytesPerSector
         let firmwareOffset = NS58Constants.firmwareStartLBA * sector
         let firmwareRange = firmwareOffset..<(firmwareOffset + firmware.count)

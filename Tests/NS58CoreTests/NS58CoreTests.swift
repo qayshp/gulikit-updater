@@ -24,18 +24,75 @@ struct NS58CoreTests {
     }
 
     @Test
-    func buildsProvenLinuxSequenceWhenFixtureIsAvailable() throws {
-        guard let path = ProcessInfo.processInfo.environment["NS58_TEST_FIRMWARE"],
-              let rootPath =
-                ProcessInfo.processInfo.environment["NS58_TEST_LINUX_ROOT"]
-        else {
-            return
+    func rejectsTruncatedBaseline() {
+        #expect(throws: NS58Error.self) {
+            try NS58FAT12.inspectBaseline(Data(repeating: 0, count: 511))
         }
+    }
+
+    @Test
+    func rejectsDifferentFATCopies() {
+        var baseline = makeBaseline()
+        baseline[8_192 + 100] = 1
+        #expect(throws: NS58Error.self) {
+            try NS58FAT12.inspectBaseline(baseline)
+        }
+    }
+
+    @Test
+    func rejectsOccupiedFirmwareClusters() {
+        var baseline = makeBaseline()
+        // FAT12 cluster 5 begins in the high nibble of byte 7.
+        baseline[4_096 + 7] = 0xFF
+        baseline[8_192 + 7] = 0xFF
+        #expect(throws: NS58Error.self) {
+            try NS58FAT12.inspectBaseline(baseline)
+        }
+    }
+
+    @Test
+    func rejectsOccupiedRootSlot() {
+        var baseline = makeBaseline()
+        baseline[3 * 4_096 + 128] = 0x41
+        #expect(throws: NS58Error.self) {
+            try NS58FAT12.inspectBaseline(baseline)
+        }
+    }
+
+    @Test
+    func rejectsTruncatedUpdatedImage() {
+        #expect(throws: NS58Error.self) {
+            try NS58FAT12.verifyUpdatedImage(
+                Data(repeating: 0, count: 16_384),
+                firmware: Data(repeating: 0, count: NS58Constants.firmwareSize)
+            )
+        }
+    }
+
+    @Test
+    func rejectsOversizedVerificationFirmware() {
+        #expect(throws: NS58Error.self) {
+            try NS58FAT12.verifyUpdatedImage(
+                makeBaseline(),
+                firmware: Data(repeating: 0, count: 100_000)
+            )
+        }
+    }
+
+    @Test(.enabled(
+        if: ProcessInfo.processInfo.environment["NS58_TEST_FIRMWARE"] != nil
+            && ProcessInfo.processInfo.environment["NS58_TEST_LINUX_ROOT"] != nil,
+        "Requires NS58_TEST_FIRMWARE and NS58_TEST_LINUX_ROOT capture fixtures"
+    ))
+    func buildsProvenLinuxSequenceWhenFixtureIsAvailable() throws {
+        let path = try #require(ProcessInfo.processInfo.environment["NS58_TEST_FIRMWARE"])
+        let rootPath = try #require(ProcessInfo.processInfo.environment["NS58_TEST_LINUX_ROOT"])
         let url = URL(fileURLWithPath: path)
         let firmware = try Data(contentsOf: url)
         let capturedRoot = try Data(
             contentsOf: URL(fileURLWithPath: rootPath)
         )
+        try #require(capturedRoot.count == NS58Constants.bytesPerSector)
         let plan = try NS58FAT12.makeUpdatePlan(
             baseline: makeBaseline(capturedRoot: capturedRoot),
             firmware: firmware,
