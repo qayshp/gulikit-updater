@@ -46,13 +46,19 @@ Alternatively, after account setup:
 
 ```sh
 scripts/build-app.sh
-open "dist/xcode/Build/Products/Debug/GuliKit Updater.app"
+open "$HOME/Library/Caches/GuliKitUpdater/DerivedData/Build/Products/Debug/GuliKit Updater.app"
 ```
 
 The script uses the team configured in the app target. Override it when needed
 with `DEVELOPMENT_TEAM=YOUR_TEAM_ID scripts/build-app.sh`. Select the shared
 **NativeUpdater** scheme; the similarly named **GuliKitUpdater** Swift package
 scheme does not produce the provisioned app bundle.
+
+The script puts generated products under `~/Library/Caches/GuliKitUpdater`
+because iCloud/File Provider can add Finder metadata to bundles under Documents
+and cause strict signature verification to fail. Xcode's normal Run action uses
+its own DerivedData directory and is also suitable. Set `GULIKIT_DERIVED_DATA`
+to choose a different local build directory.
 
 To compile without an account or provisioning (does not authorize USB access):
 
