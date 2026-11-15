@@ -30,9 +30,13 @@ Times below are America/Los_Angeles, from the app's unified logs.
 | 11:39:50.558 | Original physical USB registry entry absent; app then closed/released its claim. |
 | 11:40:01.401 | New update-mode USB session attached after the user restarted the controller. |
 | 11:40:58.821 | Read-only post-inspection failed during READ CAPACITY data IN: endpoint `0x82`, reported `0/8` bytes, `0xe00002e8` (`kIOReturnOverrun`). |
+| 11:46:33.754 | Fresh update-mode session attached after the user confirmed a normal start, power-off, and re-entry into update mode. |
+| 11:46:53.897 | Read-only inspection passed again: expected 119 × 4096-byte capacity, clean FAT12 baseline, and root label `GuliKit 3.7`. No second install occurred. |
 
 The user independently confirmed that the controller powered itself off
-automatically, then was restarted with Setting + Home for inspection.
+automatically, then was restarted with Setting + Home for the initial inspection.
+After that inspection failed, the user confirmed a normal start, power-off,
+and fresh update-mode session before the successful final inspection.
 
 ## Meaning and limits
 
@@ -45,13 +49,20 @@ was not caused by the app releasing its claim.
 Together with the observed automatic power-off, this establishes that the
 native app triggered the controller's normal firmware-update completion
 behavior. Exactly one reinstall was attempted, with no automatic retry. The
-post-inspection sent no firmware/storage-write commands.
+post-inspections sent no firmware/storage-write commands. The successful final
+inspection verifies that the expected version label and clean baseline were
+present after a normal controller start and subsequent power cycle.
 
-The post-restart label was not read successfully in this run. Normal controller
-operation was not tested. This same-version reinstall does not independently
-prove which flash pages were erased or rewritten. The successful transaction
-does not establish Release-build access, App Store acceptance, other controller
-models/units, or reliable initialization on every connection.
+Game input and other normal controller functions were not tested. This
+same-version reinstall does not independently prove which flash pages were
+erased or rewritten, or validate upgrading from an older firmware version.
+The successful transaction does not establish Release-build access, App Store
+acceptance, other controller models/units, or reliable initialization on every
+connection. Earlier timeouts and a data overrun remain relevant reliability
+limitations even though the fresh final session passed.
 
-The next verification should use a normal controller start followed by a fresh
-update-mode session and read-only inspection, not a second install.
+The core experiment's goal is achieved: transfer the validated firmware and
+trigger the controller's expected update completion behavior from a native
+macOS app, with post-normal-restart version and baseline inspection. Further
+work should focus on initialization reliability and distribution permissions,
+not additional same-version reinstalls merely to repeat this result.

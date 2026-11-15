@@ -24,9 +24,11 @@ No automatic retry or second install occurred.
 
 Before installing, inspection passed with capacity 119 × 4096 bytes and the
 validated FAT12 baseline labeled `GuliKit 3.7`. The first post-restart inspection
-failed on the READ CAPACITY data stage with `0xe00002e8` (data overrun), so a
-post-restart version read remains unconfirmed. A same-version reinstall also
-does not independently establish that every flash page was rewritten. See the
+failed on the READ CAPACITY data stage with `0xe00002e8` (data overrun). After
+a normal start, power-off, and fresh update-mode session, read-only inspection
+passed again with the expected capacity, clean FAT12 baseline, and `GuliKit 3.7`
+label. No second install was performed. A same-version reinstall does not
+independently establish that every flash page was rewritten. See the
 [hardware validation record](docs/hardware-validation-2026-11-15.md).
 
 This result uses a Debug-only, class-scoped sandbox exception. The original
@@ -130,7 +132,7 @@ approval.
    controller powers itself off automatically. Restart it normally, then
    re-enter update mode to inspect the version again.
 
-No automatic retry or USB reset is performed. Any attempted transfer consumes
+No automatic retry or USB reset is performed. Any attempted firmware transfer consumes
 the current USB session; reconnect in update mode for another attempt. A
 matching label after a same-version reinstall cannot independently prove that
 flash pages changed. Preserve the transfer result and physical power-off
