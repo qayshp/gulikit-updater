@@ -15,19 +15,26 @@ signed sandboxed app launches, its provisioning profile authorizes Claim USB
 Accessory, and AccessoryAccess successfully registers the NS58 listener.
 Downloading and verifying V3.7 inside the sandbox has also passed.
 
-A successful physical update on macOS is **not yet verified**. With the NS58
-attached, the original sandbox permissions failed to create IOUSBHostInterface
-(`0xe00002c9`). A Debug-only, class-scoped temporary exception permits interface
-creation. The existing device session then timed out on the first READ CAPACITY
-command wrapper (`SCSI 0x25 CBW OUT`, endpoint `0x02`, `0/31` bytes, `0xe00002d6`).
-After physically powering off and re-entering update mode, one inspection
-passed: exclusive USB claim, capacity of 119 × 4096 bytes, and the validated
-FAT12 baseline with root label `GuliKit 3.7`. Install became enabled with the
-verified BIN selected. This demonstrates native non-flashing inspection, not
-firmware installation, and does not establish the cause of the prior timeout.
-No firmware/storage-write commands were sent during these inspection tests.
-The earlier raw disk implementation also failed to trigger the updater; this
-experiment uses the new exclusive USB handoff API.
+**One native macOS V3.7 reinstall triggered the controller's normal update
+completion behavior on the validated NS58.** On November 15, 2026, both firmware
+and metadata WRITE(10) commands completed with matching, successful BOT status
+and zero residue. The USB device disappeared about 2.6 seconds later, before
+the app released its claim, and the user confirmed automatic physical power-off.
+No automatic retry or second install occurred.
+
+Before installing, inspection passed with capacity 119 × 4096 bytes and the
+validated FAT12 baseline labeled `GuliKit 3.7`. The first post-restart inspection
+failed on the READ CAPACITY data stage with `0xe00002e8` (data overrun), so a
+post-restart version read remains unconfirmed. A same-version reinstall also
+does not independently establish that every flash page was rewritten. See the
+[hardware validation record](docs/hardware-validation-2026-11-15.md).
+
+This result uses a Debug-only, class-scoped sandbox exception. The original
+permissions failed to create IOUSBHostInterface (`0xe00002c9`); interface
+creation works with the exception. An earlier existing session timed out on
+its first command, while a fresh physical update-mode session passed. Inspection
+and initialization still need reliability work; this is not a production-ready
+or broadly compatible updater.
 
 Claim USB Accessory requires an authorizing provisioning profile. A development
 certificate alone and ad-hoc signing are insufficient. Automatic provisioning
@@ -191,8 +198,10 @@ file access. No driver installation or privileged helper is involved.
 Development provisioning, listener registration, and downloading inside the
 sandbox are verified. Debug interface creation, capacity reads, and FAT12
 baseline inspection passed on a fresh device session with the narrow temporary
-exception described above. Live firmware transfer and App Review acceptance
-remain unverified; Release access without the exception is not established.
+exception described above. One live native firmware transaction then completed
+with the expected physical power-off. Post-restart inspection reliability and
+App Review acceptance remain unresolved; Release access without the exception
+is not established.
 
 Apple documents the temporary-exception mechanism, but requires justification
 and a corresponding reported-issue number when requesting an exception for App
@@ -200,9 +209,10 @@ Store submission. The experiment does not establish review acceptance, and the
 Release configuration deliberately does not include it. See
 [Apple's temporary-exception entitlement reference](https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/AppSandboxTemporaryExceptionEntitlements.html).
 
-Optional follow-up features: additional controller profiles and comparing
-installed/available versions. The first priority is a
-verified native update on the known NS58.
+Next priorities are reliable initialization and post-restart inspection on the
+known NS58, followed by resolving the sandbox exception's distribution path.
+Optional follow-up features include additional controller profiles and comparing
+installed/available versions.
 
 ## Provenance
 
