@@ -17,9 +17,14 @@ Downloading and verifying V3.7 inside the sandbox has also passed.
 
 A successful physical update on macOS is **not yet verified**. With the NS58
 attached, the original sandbox permissions failed to create IOUSBHostInterface
-(`0xe00002c9`). A Debug-only, class-scoped temporary exception now permits
-interface creation, but the first READ CAPACITY command wrapper times out:
-`SCSI 0x25 CBW OUT`, endpoint `0x02`, `0/31` bytes, `0xe00002d6`.
+(`0xe00002c9`). A Debug-only, class-scoped temporary exception permits interface
+creation. The existing device session then timed out on the first READ CAPACITY
+command wrapper (`SCSI 0x25 CBW OUT`, endpoint `0x02`, `0/31` bytes, `0xe00002d6`).
+After physically powering off and re-entering update mode, one inspection
+passed: exclusive USB claim, capacity of 119 × 4096 bytes, and the validated
+FAT12 baseline with root label `GuliKit 3.7`. Install became enabled with the
+verified BIN selected. This demonstrates native non-flashing inspection, not
+firmware installation, and does not establish the cause of the prior timeout.
 No firmware/storage-write commands were sent during these inspection tests.
 The earlier raw disk implementation also failed to trigger the updater; this
 experiment uses the new exclusive USB handoff API.
@@ -90,8 +95,9 @@ Release builds retain `Config/GuliKitUpdater.entitlements` without the exception
 On the tested macOS build the ordinary USB sandbox entitlement permits legacy
 USB user clients but not this IOUSBHost framework client. Adding the exception
 changed the observed failure from interface creation to a later bulk-transfer
-timeout. This is a local diagnostic result, not proof of a complete updater or
-App Store approval.
+timeout; a fresh physical update-mode session subsequently passed inspection.
+This is a local diagnostic result, not proof of a complete updater or App Store
+approval.
 
 ## Hardware experiment
 
@@ -183,9 +189,10 @@ verified the resulting BIN. The app displayed `NS58 V3.7 downloaded and verified
 The initial target enables App Sandbox, USB access, and user-selected read-only
 file access. No driver installation or privileged helper is involved.
 Development provisioning, listener registration, and downloading inside the
-sandbox are verified. Debug interface creation also works with the narrow
-temporary exception described above; bulk I/O still times out before inspection
-can pass. Live firmware transfer and App Review acceptance remain unverified.
+sandbox are verified. Debug interface creation, capacity reads, and FAT12
+baseline inspection passed on a fresh device session with the narrow temporary
+exception described above. Live firmware transfer and App Review acceptance
+remain unverified; Release access without the exception is not established.
 
 Apple documents the temporary-exception mechanism, but requires justification
 and a corresponding reported-issue number when requesting an exception for App
