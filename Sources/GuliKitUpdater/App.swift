@@ -226,18 +226,26 @@ private final class App: NSObject, NSApplicationDelegate {
         alert.informativeText = "This writes firmware once to the connected NS58. Keep it connected until the controller powers itself off. The installed version is already 3.7."
         alert.addButton(withTitle: "Install Once"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard !busy, session?.accessory.registryID == opened.accessory.registryID,
+              accessories[opened.accessory.registryID] != nil else {
+            log("Install cancelled because the inspected accessory was detached.")
+            return
+        }
         do {
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
             let firmware = try Data(contentsOf: url)
-            let plan = try NS58FAT12.makeUpdatePlan(baseline: opened.baseline,
-                firmware: firmware, firmwareFilename: url.lastPathComponent)
+            try NS58FAT12.verifyFirmware(firmware, filename: url.lastPathComponent)
             busy = true; writingRegistryID = opened.accessory.registryID
             writesAcknowledged = false; refreshButtons()
             log("LIVE WRITE START: LBA 10 (53248 bytes), then LBA 1 (12288 bytes).")
             Task {
                 do {
                     try await Task.detached {
+                        // Re-read under the same exclusive claim immediately before writing.
+                        let baseline = try opened.transport.readBlocks(atLBA: 0, count: 23)
+                        let plan = try NS58FAT12.makeUpdatePlan(baseline: baseline,
+                            firmware: firmware, firmwareFilename: url.lastPathComponent)
                         try opened.transport.writeBlocks(atLBA: 10, data: plan.firmwarePayload)
                         try opened.transport.writeBlocks(atLBA: 1, data: plan.metadataPayload)
                     }.value

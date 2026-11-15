@@ -4,7 +4,7 @@
     <key>CFBundleIdentifier</key><string>com.qayshp.GuliKitUpdater</string>
     <key>CFBundleName</key><string>GuliKit Updater</string>
     <key>CFBundleDisplayName</key><string>GuliKit Updater</string>
-    <key>CFBundleExecutable</key><string>GuliKitUpdater</string>
+    <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
