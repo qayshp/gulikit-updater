@@ -108,6 +108,17 @@ timeout; a fresh physical update-mode session subsequently passed inspection.
 This is a local diagnostic result, not proof of a complete updater or App Store
 approval.
 
+### Initialization reliability work
+
+The app now invalidates closed/released sessions before updating readiness,
+tracks attachment generations across asynchronous inspection, and defers Quit
+while USB work is in flight. Capacity inspection receives one endpoint-sized
+packet while keeping its declared SCSI data length at eight bytes, so unexpected
+status packets can be diagnosed without accepting them as capacity data.
+The proven firmware-write transaction is unchanged and is never automatically
+retried. See [USB initialization hardening](docs/usb-initialization-hardening.md)
+for the changes, offline checks, hardware evidence, and remaining hypotheses.
+
 ## Hardware experiment
 
 1. Start the signed app. With the controller off, connect a USB data cable,

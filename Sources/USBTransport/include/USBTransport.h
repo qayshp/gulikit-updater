@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <IOUSBHost/IOUSBHost.h>
+#import "GUBOTResponse.h"
 
 NS_ASSUME_NONNULL_BEGIN
 /// Open only after AAUSBAccessory has granted this app exclusive ownership.

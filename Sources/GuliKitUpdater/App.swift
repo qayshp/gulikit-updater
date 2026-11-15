@@ -16,6 +16,7 @@ private struct OpenSession: @unchecked Sendable {
     let baseline: Data
     let label: String
     let serial: String
+    let attachmentGeneration: UUID
 }
 
 private final class Listener: NSObject, AAUSBAccessoryListener, @unchecked Sendable {
@@ -32,12 +33,15 @@ private final class App: NSObject, NSApplicationDelegate {
     static let shared = App()
     private let listener = Listener()
     private var accessories: [UInt64: AAUSBAccessory] = [:]
+    private var attachments = NS58AttachmentTracker()
     private var session: OpenSession?
     private var firmwareURL: URL?
     private var inspectionFailure: String?
     private var busy = false
     private var writingRegistryID: UInt64?
     private var writesAcknowledged = false
+    private enum USBOperation: String { case inspection, release, installation }
+    private var usbOperation: USBOperation?
     private var window: NSWindow!
     private var logView = NSTextView()
     private var status = NSTextField(labelWithString: "Connect NS58 (Setting + Home), then attach it to this app from the macOS USB accessory menu.")
@@ -111,10 +115,10 @@ private final class App: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if busy && writingRegistryID != nil {
+        if let usbOperation {
             let alert = NSAlert()
-            alert.messageText = "An update is in progress"
-            alert.informativeText = "Wait for the controller to finish and power itself off before quitting."
+            alert.messageText = "USB \(usbOperation.rawValue) is in progress"
+            alert.informativeText = "Wait for this USB operation to finish before quitting. Closing an in-flight transfer can leave the controller's protocol state uncertain."
             alert.addButton(withTitle: "Keep Waiting")
             alert.runModal()
             return .terminateCancel
@@ -133,7 +137,7 @@ private final class App: NSObject, NSApplicationDelegate {
     }
     func fail(_ error: Error) {
         let message = (error as? NS58Error)?.description ?? error.localizedDescription
-        busy = false; status.stringValue = "Operation failed: \(message)"
+        usbOperation = nil; busy = false; status.stringValue = "Operation failed: \(message)"
         log("ERROR: \(error)"); refreshButtons()
     }
     func refreshButtons() {
@@ -156,7 +160,7 @@ private final class App: NSObject, NSApplicationDelegate {
         }
         if busy {
             readinessStatus.stringValue = "Operation in progress. Installation controls are locked."
-        } else if writingRegistryID != nil {
+        } else if let writingRegistryID, accessories[writingRegistryID] != nil {
             readinessStatus.stringValue = "Install unavailable: this USB session already attempted an update. Power off and re-enter update mode."
         } else if session == nil {
             readinessStatus.stringValue = "Install unavailable: Connect & Inspect has not succeeded. Downloading firmware does not inspect or write the controller."
@@ -170,6 +174,7 @@ private final class App: NSObject, NSApplicationDelegate {
         let d = accessory.deviceDescriptorData
         guard d.count >= 18, d[8] == 0xfa, d[9] == 0x33, d[10] == 0x02, d[11] == 0xff else { return }
         accessories[accessory.registryID] = accessory
+        attachments.attach(registryID: accessory.registryID)
         if !busy && session == nil && inspectionFailure == nil {
             status.stringValue = "Found \(accessories.count) NS58 updater candidate(s)."
         }
@@ -178,6 +183,7 @@ private final class App: NSObject, NSApplicationDelegate {
     }
     func disconnected(_ accessory: AAUSBAccessory) {
         accessories.removeValue(forKey: accessory.registryID)
+        attachments.detach(registryID: accessory.registryID)
         if writingRegistryID == accessory.registryID {
             // This notification may also mean the person detached the accessory
             // from this app. The worker checks physical registry disappearance.
@@ -191,18 +197,23 @@ private final class App: NSObject, NSApplicationDelegate {
         refreshButtons()
     }
     @objc func inspect() {
-        guard !busy, accessories.count == 1, let accessory = accessories.values.first else { return }
+        guard !busy, accessories.count == 1, let accessory = accessories.values.first,
+              let generation = attachments.generation(for: accessory.registryID) else { return }
         guard writingRegistryID != accessory.registryID else {
             fail(NS58Error.invalid("This USB session already attempted an update. Power off and re-enter update mode."))
             return
         }
         inspectionFailure = nil
+        usbOperation = .inspection
         busy = true; refreshButtons(); log("Requesting exclusive USB access; approve the macOS prompt.")
         Task {
             do {
                 let device = try await accessory.open(serviceQueue: nil)
                 log("Exclusive USB claim granted. Opening the NS58 mass-storage interface for read-only inspection.")
                 do {
+                    guard attachments.isCurrent(registryID: accessory.registryID, generation: generation) else {
+                        throw NS58Error.invalid("Accessory ownership changed while requesting access; no inspection commands sent")
+                    }
                     let opened = try await Task.detached { () throws -> OpenSession in
                         let serialRef = IORegistryEntryCreateCFProperty(device.ioService, "USB Serial Number" as CFString,
                             kCFAllocatorDefault, 0)?.takeRetainedValue()
@@ -220,18 +231,19 @@ private final class App: NSObject, NSApplicationDelegate {
                             let baseline = try transport.readBlocks(atLBA: 0, count: 23)
                             let inspection = try NS58FAT12.inspectBaseline(baseline)
                             return OpenSession(accessory: accessory, device: device, transport: transport,
-                                baseline: baseline, label: inspection.volumeLabel, serial: serial)
+                                baseline: baseline, label: inspection.volumeLabel, serial: serial,
+                                attachmentGeneration: generation)
                         } catch { transport.close(); throw error }
                     }.value
-                    guard accessories[accessory.registryID] != nil else {
+                    guard attachments.isCurrent(registryID: accessory.registryID, generation: generation) else {
                         opened.transport.close()
-                        throw NS58Error.invalid("Accessory was detached during inspection")
+                        throw NS58Error.invalid("Accessory ownership changed during inspection; stale result discarded")
                     }
                     session = opened
                     writingRegistryID = nil
                     status.stringValue = "NS58 · \(opened.label) · USB claimed · ready for V3.7 reinstall"
                     log("USB CLAIM + BOT READ PASS: 119 × 4096 bytes; FAT label \(opened.label).")
-                    busy = false; refreshButtons()
+                    usbOperation = nil; busy = false; refreshButtons()
                 } catch {
                     try? await accessory.close()
                     throw error
@@ -282,14 +294,19 @@ private final class App: NSObject, NSApplicationDelegate {
     }
     @objc func releaseController() {
         guard let opened = session, !busy else { return }
-        busy = true; refreshButtons()
+        // Invalidate readiness before closing. A failed accessory release must
+        // never leave Install enabled on a transport that is already closed.
+        session = nil; usbOperation = .release; busy = true; refreshButtons()
         opened.transport.close()
         Task {
             do {
                 try await opened.accessory.close()
-                session = nil; busy = false; status.stringValue = "Controller released to macOS."
+                usbOperation = nil; busy = false; status.stringValue = "Controller released to macOS."
                 log(status.stringValue); refreshButtons()
-            } catch { fail(error) }
+            } catch {
+                inspectionFailure = "Release failed after transport closure. Reconnect and inspect again."
+                fail(error)
+            }
         }
     }
     @objc func update() {
@@ -300,7 +317,8 @@ private final class App: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Install Once"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         guard !busy, session?.accessory.registryID == opened.accessory.registryID,
-              accessories[opened.accessory.registryID] != nil else {
+              attachments.isCurrent(registryID: opened.accessory.registryID,
+                  generation: opened.attachmentGeneration) else {
             log("Install cancelled because the inspected accessory was detached.")
             return
         }
@@ -309,7 +327,7 @@ private final class App: NSObject, NSApplicationDelegate {
             defer { if access { url.stopAccessingSecurityScopedResource() } }
             let firmware = try Data(contentsOf: url)
             try NS58FAT12.verifyFirmware(firmware, filename: url.lastPathComponent)
-            busy = true; writingRegistryID = opened.accessory.registryID
+            busy = true; usbOperation = .installation; writingRegistryID = opened.accessory.registryID
             writesAcknowledged = false; refreshButtons()
             log("LIVE WRITE START: LBA 10 (53248 bytes), then LBA 1 (12288 bytes).")
             Task {
@@ -338,7 +356,7 @@ private final class App: NSObject, NSApplicationDelegate {
                     log(status.stringValue)
                     opened.transport.close()
                     try? await opened.accessory.close()
-                    session = nil; busy = false; refreshButtons()
+                    session = nil; usbOperation = nil; busy = false; refreshButtons()
                 } catch {
                     // Close only after the transfer worker returned; never race a pipe request.
                     opened.transport.close()

@@ -27,5 +27,6 @@ let package = Package(
         .executableTarget(name: "GuliKitCLI", dependencies: ["NS58Core", "FirmwareDownload"]),
         .testTarget(name: "FirmwareDownloadTests", dependencies: ["FirmwareDownload", "NS58Core"]),
         .testTarget(name: "NS58CoreTests", dependencies: ["NS58Core"]),
+        .testTarget(name: "USBTransportTests", dependencies: ["USBTransport"]),
     ]
 )
