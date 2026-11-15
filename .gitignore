@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+dist/
+*.bin
+*.zip
+*.mobileprovision
+.DS_Store
