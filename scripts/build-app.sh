@@ -8,9 +8,8 @@ if [[ "${1:-}" == "--unsigned" ]]; then
 elif [[ -n "${DEVELOPMENT_TEAM:-}" ]]; then
     args+=(-allowProvisioningUpdates "DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM")
 else
-    echo 'Set DEVELOPMENT_TEAM to your Apple developer team ID, or use --unsigned to compile only.' >&2
-    echo 'First add your Apple account in Xcode > Settings > Accounts.' >&2
-    exit 2
+    # Use the team selected in the app target's Signing & Capabilities panel.
+    args+=(-allowProvisioningUpdates)
 fi
 xcodebuild "${args[@]}" build
 app="$PWD/dist/xcode/Build/Products/Debug/GuliKit Updater.app"

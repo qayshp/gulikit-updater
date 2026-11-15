@@ -10,16 +10,18 @@ in this repository. NS59 / Elves 2 Pro is not supported.
 
 ## Status
 
-Build and offline tests pass on macOS 27.2.1 / Xcode 27.2 / Swift 6.4.2. A
-successful physical update on macOS is **not yet verified**. The earlier raw disk
-implementation failed to trigger the updater; this experiment uses the new
-exclusive USB handoff API.
+Build and offline tests pass on macOS 27.2.1 / Xcode 27.2 / Swift 6.4.2. The
+signed sandboxed app launches, its provisioning profile authorizes Claim USB
+Accessory, and AccessoryAccess successfully registers the NS58 listener.
+Downloading and verifying V3.7 inside the sandbox has also passed.
 
-The first signed launch was rejected by macOS: the Claim USB Accessory
-entitlement requires an authorizing provisioning profile. A development
+A successful physical update on macOS is **not yet verified**. No NS58 was
+attached during this runtime check. The earlier raw disk implementation failed
+to trigger the updater; this experiment uses the new exclusive USB handoff API.
+
+Claim USB Accessory requires an authorizing provisioning profile. A development
 certificate alone and ad-hoc signing are insufficient. Automatic provisioning
-currently reports **No Accounts** in this Mac's Xcode installation. Sign into
-Xcode and select a developer team before running the hardware experiment.
+works after selecting the developer team and registering this Mac for development.
 
 Apple requires AccessoryAccess callers to be normal apps that appear in the
 Dock, signed with `com.apple.developer.accessory-access.usb`. The USB operation
@@ -32,17 +34,25 @@ with access to the Claim USB Accessory capability.
 
 1. Open `GuliKitUpdater.xcodeproj`.
 2. In Xcode Settings > Accounts, add your Apple account.
-3. Select the **GuliKitUpdater** app target, Signing & Capabilities, and your
-   team. Automatic signing is enabled and Claim USB Accessory is in the
-   entitlements file.
+3. In the left Project navigator, click the top-level blue **GuliKitUpdater**
+   project icon. In the editor's **TARGETS** list select **GuliKitUpdater**, then
+   click **Signing & Capabilities** across the top. Choose your **Team** in the
+   Signing section. If Xcode reports that this Mac is not registered, click
+   **Register Device**. Automatic signing is enabled and Claim USB Accessory is
+   already present. No separate capability needs to be added.
 4. Run the shared **NativeUpdater** scheme.
 
 Alternatively, after account setup:
 
 ```sh
-DEVELOPMENT_TEAM=YOUR_TEAM_ID scripts/build-app.sh
+scripts/build-app.sh
 open "dist/xcode/Build/Products/Debug/GuliKit Updater.app"
 ```
+
+The script uses the team configured in the app target. Override it when needed
+with `DEVELOPMENT_TEAM=YOUR_TEAM_ID scripts/build-app.sh`. Select the shared
+**NativeUpdater** scheme; the similarly named **GuliKitUpdater** Swift package
+scheme does not produce the provisioned app bundle.
 
 To compile without an account or provisioning (does not authorize USB access):
 
@@ -133,18 +143,18 @@ To include the pinned archive extraction test, also set:
 NS58_TEST_ARCHIVE=/path/to/NS58_Elves2_V3.7.zip swift test
 ```
 
-The CLI completed a real HTTPS download and verified the resulting BIN. The app
-builds with the same downloader; its sandboxed runtime remains unverified until
-the Claim USB Accessory provisioning prerequisite is resolved.
+The CLI and the signed sandboxed app both completed a real HTTPS download and
+verified the resulting BIN. The app displayed `NS58 V3.7 downloaded and verified.`
 
 ## App Store direction
 
 The initial target enables App Sandbox, USB access, and user-selected read-only
 file access. No driver installation or privileged helper is involved. This
-keeps an App Store path open, but provisioning, sandbox access to
-`IOUSBHostInterface`, and App Review acceptance have not been verified. The
-current experiment will establish whether the public framework supports this
-updater's transfers inside the sandbox.
+keeps an App Store path open. Development provisioning, listener registration,
+and downloading inside the sandbox are verified. Sandbox access to
+`IOUSBHostInterface`, live controller transfers, and App Review acceptance remain
+unverified. The hardware experiment will establish whether the public framework
+supports this updater's transfers inside the sandbox.
 
 Optional follow-up features: additional controller profiles and comparing
 installed/available versions. The first priority is a
