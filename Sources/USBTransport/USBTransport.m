@@ -17,6 +17,8 @@ static uint32_t getLE32(const uint8_t *p) {
     IOUSBHostInterface *_interface;
     IOUSBHostPipe *_input;
     IOUSBHostPipe *_output;
+    uint8_t _inputAddress;
+    uint8_t _outputAddress;
     uint32_t _tag;
     BOOL _writeStarted;
 }
@@ -75,7 +77,8 @@ static uint32_t getLE32(const uint8_t *p) {
             }
             IOUSBHostPipe *pipe = [_interface copyPipeWithAddress:address error:error];
             if (!pipe) { [self close]; return nil; }
-            if (address & 0x80) _input = pipe; else _output = pipe;
+            if (address & 0x80) { _input = pipe; _inputAddress = address; }
+            else { _output = pipe; _outputAddress = address; }
         }
         offset += length;
     }
@@ -84,11 +87,25 @@ static uint32_t getLE32(const uint8_t *p) {
     }
     return self;
 }
-- (BOOL)transfer:(IOUSBHostPipe *)pipe data:(NSMutableData *)data error:(NSError **)error {
+- (BOOL)transfer:(IOUSBHostPipe *)pipe data:(NSMutableData *)data
+    phase:(NSString *)phase error:(NSError **)error {
     NSUInteger transferred = 0;
-    if (![pipe sendIORequestWithData:data bytesTransferred:&transferred completionTimeout:10 error:error]) return NO;
+    NSError *underlying = nil;
+    if (![pipe sendIORequestWithData:data bytesTransferred:&transferred completionTimeout:10 error:&underlying]) {
+        uint8_t address = pipe == _input ? _inputAddress : _outputAddress;
+        if (error) {
+            NSString *message = [NSString stringWithFormat:
+                @"%@ on endpoint 0x%02x failed (%lu/%lu bytes): %@ (%@, 0x%08x)",
+                phase, address, transferred, data.length, underlying.localizedDescription,
+                underlying.domain, (uint32_t)underlying.code];
+            NSMutableDictionary *info = [@{NSLocalizedDescriptionKey: message} mutableCopy];
+            if (underlying) info[NSUnderlyingErrorKey] = underlying;
+            *error = [NSError errorWithDomain:@"GuliKitUSB" code:2 userInfo:info];
+        }
+        return NO;
+    }
     return transferred == data.length || GUFail(error,
-        [NSString stringWithFormat:@"Short USB transfer: %lu of %lu bytes", transferred, data.length]);
+        [NSString stringWithFormat:@"%@ short USB transfer: %lu of %lu bytes", phase, transferred, data.length]);
 }
 - (NSData *)command:(const uint8_t *)cdb length:(NSUInteger)length input:(BOOL)input
     payload:(NSData *)payload count:(NSUInteger)count error:(NSError **)error {
@@ -98,11 +115,13 @@ static uint32_t getLE32(const uint8_t *p) {
     memcpy(p, "USBC", 4); putLE32(p+4, ++_tag); putLE32(p+8, (uint32_t)count);
     p[12] = input ? 0x80 : 0; p[13] = 0; p[14] = (uint8_t)length;
     memcpy(p+15, cdb, length);
-    if (![self transfer:_output data:cbw error:error]) return nil;
+    NSString *command = [NSString stringWithFormat:@"SCSI 0x%02x", cdb[0]];
+    if (![self transfer:_output data:cbw phase:[command stringByAppendingString:@" CBW OUT"] error:error]) return nil;
     NSMutableData *data = input ? [NSMutableData dataWithLength:count] : [payload mutableCopy];
-    if (count && ![self transfer:input ? _input : _output data:data error:error]) return nil;
+    if (count && ![self transfer:input ? _input : _output data:data
+        phase:[command stringByAppendingString:input ? @" data IN" : @" data OUT"] error:error]) return nil;
     NSMutableData *csw = [NSMutableData dataWithLength:13];
-    if (![self transfer:_input data:csw error:error]) return nil;
+    if (![self transfer:_input data:csw phase:[command stringByAppendingString:@" CSW IN"] error:error]) return nil;
     const uint8_t *s = csw.bytes;
     if (memcmp(s, "USBS", 4) || getLE32(s+4) != _tag || getLE32(s+8) != 0 || s[12] != 0) {
         GUFail(error, [NSString stringWithFormat:@"Invalid or failed BOT status (status=%u residue=%u)",

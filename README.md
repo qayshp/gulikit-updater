@@ -15,9 +15,14 @@ signed sandboxed app launches, its provisioning profile authorizes Claim USB
 Accessory, and AccessoryAccess successfully registers the NS58 listener.
 Downloading and verifying V3.7 inside the sandbox has also passed.
 
-A successful physical update on macOS is **not yet verified**. No NS58 was
-attached during this runtime check. The earlier raw disk implementation failed
-to trigger the updater; this experiment uses the new exclusive USB handoff API.
+A successful physical update on macOS is **not yet verified**. With the NS58
+attached, the original sandbox permissions failed to create IOUSBHostInterface
+(`0xe00002c9`). A Debug-only, class-scoped temporary exception now permits
+interface creation, but the first READ CAPACITY command wrapper times out:
+`SCSI 0x25 CBW OUT`, endpoint `0x02`, `0/31` bytes, `0xe00002d6`.
+No firmware/storage-write commands were sent during these inspection tests.
+The earlier raw disk implementation also failed to trigger the updater; this
+experiment uses the new exclusive USB handoff API.
 
 Claim USB Accessory requires an authorizing provisioning profile. A development
 certificate alone and ad-hoc signing are insufficient. Automatic provisioning
@@ -72,6 +77,22 @@ updater identity (`33fa:ff02`). This first experiment also requires serial
 `115411`, the previously validated controller, and a clean `GuliKit 3.7` FAT12
 baseline. Other units/versions remain future work.
 
+### Debug sandbox experiment
+
+Debug builds use `Config/GuliKitUpdater-Debug.entitlements`, which adds only
+`AppleUSBHostFrameworkInterfaceClient` to the documented
+`com.apple.security.temporary-exception.iokit-user-client-class` array. App
+Sandbox stays enabled. This permission is scoped to a user-client class, not a
+vendor/product pair; the AccessoryAccess matching and application identity
+checks still restrict this app's connection path to the validated NS58.
+Release builds retain `Config/GuliKitUpdater.entitlements` without the exception.
+
+On the tested macOS build the ordinary USB sandbox entitlement permits legacy
+USB user clients but not this IOUSBHost framework client. Adding the exception
+changed the observed failure from interface creation to a later bulk-transfer
+timeout. This is a local diagnostic result, not proof of a complete updater or
+App Store approval.
+
 ## Hardware experiment
 
 1. Start the signed app. With the controller off, connect a USB data cable,
@@ -80,9 +101,14 @@ baseline. Other units/versions remain future work.
 3. Click **Connect & Inspect**. macOS grants exclusive ownership; the app
    configures the USB interface and reads capacity and the FAT12 baseline.
    A passing result shows **USB CLAIM + BOT READ PASS** and the firmware label.
+   Inspection does not send storage-write commands, but it does reconfigure
+   USB and can temporarily remove the mounted volume from Finder. A failed
+   inspection keeps Install disabled and leaves its error visible.
 4. Click **Download V3.7** to retrieve and verify the supported release, or
    click **Choose Firmware** and select the extracted official
    `NS58_Elves2_V3.7.bin`. Its size and SHA-256 must match the known release.
+   Download automatically selects the verified BIN; a second file selection
+   is unnecessary. The window shows its full path and the installation blocker.
 5. Click **Install V3.7**, review the confirmation, and select **Install Once**.
    The app sends the padded firmware in one WRITE(10) transaction and the FAT
    metadata in a second. It validates the BOT status of each transfer.
@@ -155,12 +181,17 @@ verified the resulting BIN. The app displayed `NS58 V3.7 downloaded and verified
 ## App Store direction
 
 The initial target enables App Sandbox, USB access, and user-selected read-only
-file access. No driver installation or privileged helper is involved. This
-keeps an App Store path open. Development provisioning, listener registration,
-and downloading inside the sandbox are verified. Sandbox access to
-`IOUSBHostInterface`, live controller transfers, and App Review acceptance remain
-unverified. The hardware experiment will establish whether the public framework
-supports this updater's transfers inside the sandbox.
+file access. No driver installation or privileged helper is involved.
+Development provisioning, listener registration, and downloading inside the
+sandbox are verified. Debug interface creation also works with the narrow
+temporary exception described above; bulk I/O still times out before inspection
+can pass. Live firmware transfer and App Review acceptance remain unverified.
+
+Apple documents the temporary-exception mechanism, but requires justification
+and a corresponding reported-issue number when requesting an exception for App
+Store submission. The experiment does not establish review acceptance, and the
+Release configuration deliberately does not include it. See
+[Apple's temporary-exception entitlement reference](https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/AppSandboxTemporaryExceptionEntitlements.html).
 
 Optional follow-up features: additional controller profiles and comparing
 installed/available versions. The first priority is a

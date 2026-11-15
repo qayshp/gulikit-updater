@@ -34,12 +34,16 @@ private final class App: NSObject, NSApplicationDelegate {
     private var accessories: [UInt64: AAUSBAccessory] = [:]
     private var session: OpenSession?
     private var firmwareURL: URL?
+    private var inspectionFailure: String?
     private var busy = false
     private var writingRegistryID: UInt64?
     private var writesAcknowledged = false
     private var window: NSWindow!
     private var logView = NSTextView()
     private var status = NSTextField(labelWithString: "Connect NS58 (Setting + Home), then attach it to this app from the macOS USB accessory menu.")
+    private let controllerStatus = NSTextField(wrappingLabelWithString: "")
+    private let firmwareStatus = NSTextField(wrappingLabelWithString: "")
+    private let readinessStatus = NSTextField(wrappingLabelWithString: "")
     private let inspectButton = NSButton(title: "Connect & Inspect", target: nil, action: nil)
     private let fileButton = NSButton(title: "Choose Firmware…", target: nil, action: nil)
     private let downloadButton = NSButton(title: "Download V3.7", target: nil, action: nil)
@@ -54,14 +58,16 @@ private final class App: NSObject, NSApplicationDelegate {
         appMenu.submenu = NSMenu()
         appMenu.submenu?.addItem(withTitle: "Quit GuliKit Updater", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         NSApp.mainMenu = menu
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 440),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 620),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "GuliKit Updater — NS58 Experiment"
         let title = NSTextField(labelWithString: "GuliKit Elves 2 · NS58")
         title.font = .boldSystemFont(ofSize: 22)
         status.maximumNumberOfLines = 3
-        let buttons = NSStackView(views: [inspectButton, fileButton, downloadButton, updateButton, releaseButton])
-        buttons.spacing = 10
+        let deviceButtons = NSStackView(views: [inspectButton, releaseButton])
+        let firmwareButtons = NSStackView(views: [downloadButton, fileButton, updateButton])
+        deviceButtons.spacing = 10; firmwareButtons.spacing = 10
+        firmwareStatus.textColor = .secondaryLabelColor
         for (button, action) in [(inspectButton, #selector(inspect)), (fileButton, #selector(chooseFirmware)),
             (downloadButton, #selector(downloadFirmware)), (updateButton, #selector(update)), (releaseButton, #selector(releaseController))] {
             button.target = self; button.action = action
@@ -70,7 +76,8 @@ private final class App: NSObject, NSApplicationDelegate {
         logView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         let scroll = NSScrollView()
         scroll.documentView = logView; scroll.hasVerticalScroller = true
-        let stack = NSStackView(views: [title, status, buttons, scroll])
+        let stack = NSStackView(views: [title, controllerStatus, deviceButtons,
+            firmwareStatus, firmwareButtons, readinessStatus, status, scroll])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 16
         stack.translatesAutoresizingMaskIntoConstraints = false
         window.contentView!.addSubview(stack)
@@ -82,6 +89,10 @@ private final class App: NSObject, NSApplicationDelegate {
             scroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
             scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 200),
         ])
+        for label in [controllerStatus, firmwareStatus, readinessStatus, status] {
+            label.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+        window.minSize = NSSize(width: 720, height: 600)
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         refreshButtons()
         log("macOS 27 AccessoryAccess listener starting (33fa:ff02 only).")
@@ -121,7 +132,8 @@ private final class App: NSObject, NSApplicationDelegate {
         logView.scrollToEndOfDocument(nil)
     }
     func fail(_ error: Error) {
-        busy = false; status.stringValue = "Operation failed: \(error.localizedDescription)"
+        let message = (error as? NS58Error)?.description ?? error.localizedDescription
+        busy = false; status.stringValue = "Operation failed: \(message)"
         log("ERROR: \(error)"); refreshButtons()
     }
     func refreshButtons() {
@@ -130,12 +142,37 @@ private final class App: NSObject, NSApplicationDelegate {
         downloadButton.isEnabled = !busy
         updateButton.isEnabled = !busy && session != nil && firmwareURL != nil && writingRegistryID == nil
         releaseButton.isEnabled = !busy && session != nil
+        if let opened = session {
+            controllerStatus.stringValue = "Controller: NS58 · \(opened.label) · inspection passed · exclusive USB access"
+        } else if let inspectionFailure {
+            controllerStatus.stringValue = "Controller inspection failed: \(inspectionFailure)"
+        } else {
+            controllerStatus.stringValue = "Controller: \(accessories.count) NS58 updater candidate(s). Connect & Inspect must pass before installation."
+        }
+        if let firmwareURL {
+            firmwareStatus.stringValue = "Firmware selected and verified: \(firmwareURL.lastPathComponent)\n\(firmwareURL.path)"
+        } else {
+            firmwareStatus.stringValue = "Firmware: none selected. Download V3.7 selects the verified BIN automatically, or choose a local file."
+        }
+        if busy {
+            readinessStatus.stringValue = "Operation in progress. Installation controls are locked."
+        } else if writingRegistryID != nil {
+            readinessStatus.stringValue = "Install unavailable: this USB session already attempted an update. Power off and re-enter update mode."
+        } else if session == nil {
+            readinessStatus.stringValue = "Install unavailable: Connect & Inspect has not succeeded. Downloading firmware does not inspect or write the controller."
+        } else if firmwareURL == nil {
+            readinessStatus.stringValue = "Controller ready. Download V3.7 or choose the supported BIN to enable Install."
+        } else {
+            readinessStatus.stringValue = "Ready for a V3.7 reinstall. Install opens a confirmation before any firmware write."
+        }
     }
     func connected(_ accessory: AAUSBAccessory) {
         let d = accessory.deviceDescriptorData
         guard d.count >= 18, d[8] == 0xfa, d[9] == 0x33, d[10] == 0x02, d[11] == 0xff else { return }
         accessories[accessory.registryID] = accessory
-        status.stringValue = "Found \(accessories.count) NS58 updater candidate(s)."
+        if !busy && session == nil && inspectionFailure == nil {
+            status.stringValue = "Found \(accessories.count) NS58 updater candidate(s)."
+        }
         log("NS58 updater attached, registry \(accessory.registryID).")
         refreshButtons()
     }
@@ -159,10 +196,12 @@ private final class App: NSObject, NSApplicationDelegate {
             fail(NS58Error.invalid("This USB session already attempted an update. Power off and re-enter update mode."))
             return
         }
+        inspectionFailure = nil
         busy = true; refreshButtons(); log("Requesting exclusive USB access; approve the macOS prompt.")
         Task {
             do {
                 let device = try await accessory.open(serviceQueue: nil)
+                log("Exclusive USB claim granted. Opening the NS58 mass-storage interface for read-only inspection.")
                 do {
                     let opened = try await Task.detached { () throws -> OpenSession in
                         let serialRef = IORegistryEntryCreateCFProperty(device.ioService, "USB Serial Number" as CFString,
@@ -170,7 +209,9 @@ private final class App: NSObject, NSApplicationDelegate {
                         guard let serial = serialRef as? String, serial == "115411" else {
                             throw NS58Error.invalid("USB serial does not match the validated NS58 unit")
                         }
-                        let transport = try GUUSBTransport(device: device)
+                        let transport: GUUSBTransport
+                        do { transport = try GUUSBTransport(device: device) }
+                        catch { throw NS58Error.invalid("Opening the USB mass-storage interface failed: \(error)") }
                         do {
                             let capacity = try transport.readCapacity()
                             guard capacity == Data([0,0,0,118,0,0,16,0]) else {
@@ -195,7 +236,10 @@ private final class App: NSObject, NSApplicationDelegate {
                     try? await accessory.close()
                     throw error
                 }
-            } catch { fail(error) }
+            } catch {
+                inspectionFailure = (error as? NS58Error)?.description ?? error.localizedDescription
+                fail(error)
+            }
         }
     }
     @objc func chooseFirmware() {
