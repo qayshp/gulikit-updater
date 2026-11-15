@@ -4,6 +4,7 @@ import IOKit
 @preconcurrency import IOUSBHost
 @preconcurrency import USBTransport
 import NS58Core
+import FirmwareDownload
 import OSLog
 
 private let logger = Logger(subsystem: "com.qayshp.GuliKitUpdater", category: "updater")
@@ -41,6 +42,7 @@ private final class App: NSObject, NSApplicationDelegate {
     private var status = NSTextField(labelWithString: "Connect NS58 (Setting + Home), then attach it to this app from the macOS USB accessory menu.")
     private let inspectButton = NSButton(title: "Connect & Inspect", target: nil, action: nil)
     private let fileButton = NSButton(title: "Choose Firmware…", target: nil, action: nil)
+    private let downloadButton = NSButton(title: "Download V3.7", target: nil, action: nil)
     private let updateButton = NSButton(title: "Install V3.7", target: nil, action: nil)
     private let releaseButton = NSButton(title: "Release Controller", target: nil, action: nil)
 
@@ -58,10 +60,10 @@ private final class App: NSObject, NSApplicationDelegate {
         let title = NSTextField(labelWithString: "GuliKit Elves 2 · NS58")
         title.font = .boldSystemFont(ofSize: 22)
         status.maximumNumberOfLines = 3
-        let buttons = NSStackView(views: [inspectButton, fileButton, updateButton, releaseButton])
+        let buttons = NSStackView(views: [inspectButton, fileButton, downloadButton, updateButton, releaseButton])
         buttons.spacing = 10
         for (button, action) in [(inspectButton, #selector(inspect)), (fileButton, #selector(chooseFirmware)),
-            (updateButton, #selector(update)), (releaseButton, #selector(releaseController))] {
+            (downloadButton, #selector(downloadFirmware)), (updateButton, #selector(update)), (releaseButton, #selector(releaseController))] {
             button.target = self; button.action = action
         }
         logView.isEditable = false
@@ -125,6 +127,7 @@ private final class App: NSObject, NSApplicationDelegate {
     func refreshButtons() {
         inspectButton.isEnabled = !busy && session == nil && accessories.count == 1
         fileButton.isEnabled = !busy
+        downloadButton.isEnabled = !busy
         updateButton.isEnabled = !busy && session != nil && firmwareURL != nil && writingRegistryID == nil
         releaseButton.isEnabled = !busy && session != nil
     }
@@ -143,7 +146,8 @@ private final class App: NSObject, NSApplicationDelegate {
             // from this app. The worker checks physical registry disappearance.
             log("Accessory detached from app during update; checking physical USB state.")
         } else if session?.accessory.registryID == accessory.registryID {
-            if !busy { session?.transport.close(); session = nil }
+            // Established sessions have no USB worker outside the update branch.
+            session?.transport.close(); session = nil
             status.stringValue = "Controller disconnected."
         }
         log("USB accessory disconnected, registry \(accessory.registryID).")
@@ -206,6 +210,31 @@ private final class App: NSObject, NSApplicationDelegate {
             firmwareURL = url; log("Firmware verified: \(url.lastPathComponent), SHA-256 matches known V3.7.")
             refreshButtons()
         } catch { fail(error) }
+    }
+    @objc func downloadFirmware() {
+        guard !busy else { return }
+        busy = true; refreshButtons()
+        status.stringValue = "Downloading and verifying supported NS58 firmware V3.7…"
+        log("Downloading supported V3.7 from TousLesDrivers. Package and BIN hashes are pinned.")
+        Task {
+            do {
+                let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
+                    appropriateFor: nil, create: true)
+                let directory = caches.appendingPathComponent("NS58-V3.7", isDirectory: true)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let cached = directory.appendingPathComponent(NS58Constants.firmwareName)
+                if FileManager.default.fileExists(atPath: cached.path) {
+                    try NS58FAT12.verifyFirmware(Data(contentsOf: cached), filename: cached.lastPathComponent)
+                    firmwareURL = cached
+                } else {
+                    let firmware = try await SupportedFirmware.download()
+                    firmwareURL = try SupportedFirmware.saveVerified(firmware, in: directory)
+                }
+                log("Supported V3.7 BIN verified and selected. Click Install V3.7 after inspecting the controller.")
+                status.stringValue = "NS58 V3.7 downloaded and verified."
+                busy = false; refreshButtons()
+            } catch { fail(error) }
+        }
     }
     @objc func releaseController() {
         guard let opened = session, !busy else { return }

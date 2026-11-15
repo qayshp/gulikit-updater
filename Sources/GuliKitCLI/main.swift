@@ -1,19 +1,20 @@
 import Darwin
 import Foundation
 import NS58Core
+import FirmwareDownload
 
 @main
 enum GuliKitCLI {
-    static func main() {
+    static func main() async {
         do {
-            try run(Array(CommandLine.arguments.dropFirst()))
+            try await run(Array(CommandLine.arguments.dropFirst()))
         } catch {
             FileHandle.standardError.write(Data("ERROR: \(error)\n".utf8))
             exit(1)
         }
     }
 
-    static func run(_ arguments: [String]) throws {
+    static func run(_ arguments: [String]) async throws {
         guard let command = arguments.first else {
             printUsage()
             return
@@ -32,6 +33,20 @@ enum GuliKitCLI {
             print("Size: \(firmware.count) bytes")
             print("SHA-256: \(NS58FAT12.sha256(firmware))")
             print("Verified NS58 Elves 2 V3.7 firmware")
+        case "download":
+            guard arguments.count == 3, arguments[1] == "--directory" else {
+                throw NS58Error.invalid("usage: gulikit download --directory /existing/output/directory")
+            }
+            let directory = URL(fileURLWithPath: arguments[2], isDirectory: true)
+            guard try directory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {
+                throw NS58Error.invalid("download destination must be an existing directory")
+            }
+            print("Downloading supported NS58 V\(SupportedFirmware.version) from \(SupportedFirmware.downloadURL.host!)")
+            let firmware = try await SupportedFirmware.download()
+            let saved = try SupportedFirmware.saveVerified(firmware, in: directory)
+            print("Saved: \(saved.path)")
+            print("SHA-256: \(NS58FAT12.sha256(firmware))")
+            print("Verified package and firmware; no device opened")
         case "plan":
             let options = try parsePlanOptions(Array(arguments.dropFirst()))
             let imageURL = try regularFile(options.image)
@@ -88,6 +103,7 @@ enum GuliKitCLI {
         GuliKit offline firmware tools
 
         gulikit verify /path/to/NS58_Elves2_V3.7.bin
+        gulikit download --directory /existing/output/directory
         gulikit plan --image /path/to/baseline.img --firmware /path/to/NS58_Elves2_V3.7.bin
 
         USB access and updating are provided by the GuliKitUpdater app.

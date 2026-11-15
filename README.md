@@ -64,7 +64,8 @@ baseline. Other units/versions remain future work.
 3. Click **Connect & Inspect**. macOS grants exclusive ownership; the app
    configures the USB interface and reads capacity and the FAT12 baseline.
    A passing result shows **USB CLAIM + BOT READ PASS** and the firmware label.
-4. Click **Choose Firmware** and select the extracted official
+4. Click **Download V3.7** to retrieve and verify the supported release, or
+   click **Choose Firmware** and select the extracted official
    `NS58_Elves2_V3.7.bin`. Its size and SHA-256 must match the known release.
 5. Click **Install V3.7**, review the confirmation, and select **Install Once**.
    The app sends the padded firmware in one WRITE(10) transaction and the FAT
@@ -84,6 +85,7 @@ observation together.
 
 ```sh
 .build/debug/gulikit verify /path/to/NS58_Elves2_V3.7.bin
+.build/debug/gulikit download --directory /existing/output/directory
 .build/debug/gulikit plan --image /path/to/baseline.img --firmware /path/to/NS58_Elves2_V3.7.bin
 swift test
 ```
@@ -98,6 +100,43 @@ NS58_TEST_FIRMWARE=/path/to/NS58_Elves2_V3.7.bin \
 NS58_TEST_LINUX_ROOT=/path/to/linux-root-final.bin swift test
 ```
 
+## Firmware download
+
+The downloader retrieves the **supported V3.7 release**, rather than assuming
+every future release is compatible with this experimental write plan. GuliKit's
+official download endpoint may require browser verification, so the current
+source is the [TousLesDrivers mirror](https://www.touslesdrivers.com/index.php?v_code=84388&v_page=23).
+The downloaded ZIP is byte-identical to the original official package retained
+from the earlier investigation:
+
+```text
+ZIP SHA-256: b2a447203f7329e8981050717cfc1aa143a00dd18d50015e9cfdad389e645784
+BIN SHA-256: 486c308e857b24adde6e7b623af67c8d0a74b6038f57ffc41ea7e2b94683e1eb
+```
+
+The download is limited to 512 KiB while receiving bytes, restricts HTTPS
+redirects to the pinned source, checks the ZIP hash before parsing, extracts
+only the expected BIN into memory, and checks its hash again. The CLI writes
+the BIN atomically without replacing an existing file or symlink. The app
+saves it in its sandbox cache and selects it for installation. Downloading
+does not open or write a controller.
+
+ZIP parsing uses the MIT-licensed
+[ZIPFoundation 0.9.20](https://github.com/weichsel/ZIPFoundation/releases/tag/0.9.20),
+pinned in both SwiftPM and Xcode lockfiles. Firmware itself is not committed.
+
+Eight additional tests cover download URL policy, archive rejection, hash
+validation, fixed output naming, and preservation of existing files/symlinks.
+To include the pinned archive extraction test, also set:
+
+```sh
+NS58_TEST_ARCHIVE=/path/to/NS58_Elves2_V3.7.zip swift test
+```
+
+The CLI completed a real HTTPS download and verified the resulting BIN. The app
+builds with the same downloader; its sandboxed runtime remains unverified until
+the Claim USB Accessory provisioning prerequisite is resolved.
+
 ## App Store direction
 
 The initial target enables App Sandbox, USB access, and user-selected read-only
@@ -107,8 +146,8 @@ keeps an App Store path open, but provisioning, sandbox access to
 current experiment will establish whether the public framework supports this
 updater's transfers inside the sandbox.
 
-Optional follow-up features: official firmware download, additional controller
-profiles, and comparing installed/available versions. The first priority is a
+Optional follow-up features: additional controller profiles and comparing
+installed/available versions. The first priority is a
 verified native update on the known NS58.
 
 ## Provenance
