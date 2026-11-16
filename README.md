@@ -163,6 +163,14 @@ updater. Do not run both apps for the same controller or start a hardware cycle
 implicitly. See the [reproduction guide](docs/accessoryaccess-close-reopen-repro.md)
 for the explicit launch/test sequence, safety gates, and evidence boundaries.
 
+The first authorized AA-only hardware cycle reproduced delayed ownership loss:
+Reopen returned successfully, then a logical disconnect arrived about 93 ms
+later while the physical USB device remained present. The app latched off with
+no retry. Configuration/interface/SCSI/firmware code was absent from this
+test, so those paths are not required to trigger the observed symptom. This is
+not yet proof of a framework defect. See the
+[AA-only result](docs/accessoryaccess-repro-result-2026-11-15.md).
+
 ## Hardware experiment
 
 1. Start the signed app. With the controller off, connect a USB data cable,

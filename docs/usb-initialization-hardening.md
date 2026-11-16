@@ -396,3 +396,15 @@ captured Linux-root fixtures, had **70 passing tests and one skipped pinned-ZIP
 fixture test**. This includes twelve pure reproduction-state tests and eleven
 main safety/descriptor tests. The existing captured Linux write-plan comparison
 also passed. No transport/payload implementation change was made.
+
+## Subsequent AA-only hardware result
+
+The user then authorized one cycle in the separate reproduction app. Its Claim
+and Close passed; Reopen initially returned a valid device, then AccessoryAccess
+reported logical disconnect approximately 93 ms later with the physical device
+still present. The app stopped and refused same-instance retries. No USB
+configuration, interface, SCSI, reset, or firmware path was involved. This
+narrows the minimal trigger to the AA lifecycle in this environment, but does
+not itself identify a framework bug or establish repeatability. The
+[full result](accessoryaccess-repro-result-2026-11-15.md) preserves the local-time
+timeline, cleanup-after-disconnect distinction, and remaining uncertainties.

@@ -5,6 +5,13 @@
 the firmware updater. It is not a firmware updater and does not depend on
 `USBTransport`, `NS58Core`, or `FirmwareDownload`.
 
+One authorized hardware cycle on November 15, 2026 reproduced delayed logical
+ownership loss: Claim and Close passed; Reopen returned successfully, but about
+93 ms later AccessoryAccess reported disconnect while the physical registry
+remained present. The final state was recoveryRequired, not a stable API-cycle
+pass. No storage or reset command was sent. See the
+[captured result and limits](accessoryaccess-repro-result-2026-11-15.md).
+
 ## Deliberately small scope
 
 The app registers a `33fa:ff02` listener, accepts only devices matching the
