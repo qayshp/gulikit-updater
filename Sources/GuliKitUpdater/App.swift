@@ -8,6 +8,7 @@ import FirmwareDownload
 import OSLog
 
 private let logger = Logger(subsystem: "com.qayshp.GuliKitUpdater", category: "updater")
+private let accessoryLogger = Logger(subsystem: "com.qayshp.GuliKitUpdater", category: "accessory-events")
 
 private struct OpenSession: @unchecked Sendable {
     let accessory: AAUSBAccessory
@@ -20,11 +21,30 @@ private struct OpenSession: @unchecked Sendable {
 }
 
 private final class Listener: NSObject, AAUSBAccessoryListener, @unchecked Sendable {
+    private let eventLock = NSLock()
+    private var sequence: UInt64 = 0
+
+    private func deliver(_ accessory: AAUSBAccessory, connected: Bool) {
+        // AccessoryAccess invokes listeners on its serial queue. Keep the hop
+        // to MainActor FIFO as well; independent unstructured Tasks do not
+        // establish an ordering guarantee between connection events.
+        eventLock.lock()
+        sequence += 1
+        let eventSequence = sequence
+        let sourceTime = ProcessInfo.processInfo.systemUptime
+        let kind = connected ? "connect" : "disconnect"
+        accessoryLogger.notice("Callback #\(eventSequence) \(kind, privacy: .public) registry=\(accessory.registryID) sourceUptime=\(sourceTime)")
+        DispatchQueue.main.async {
+            App.shared.accessoryEvent(accessory, connected: connected,
+                sequence: eventSequence, sourceTime: sourceTime)
+        }
+        eventLock.unlock()
+    }
     nonisolated func usbAccessoryDidConnect(_ accessory: AAUSBAccessory) {
-        Task { @MainActor in App.shared.connected(accessory) }
+        deliver(accessory, connected: true)
     }
     nonisolated func usbAccessoryDidDisconnect(_ accessory: AAUSBAccessory) {
-        Task { @MainActor in App.shared.disconnected(accessory) }
+        deliver(accessory, connected: false)
     }
 }
 
@@ -169,6 +189,18 @@ private final class App: NSObject, NSApplicationDelegate {
         } else {
             readinessStatus.stringValue = "Ready for a V3.7 reinstall. Install opens a confirmation before any firmware write."
         }
+    }
+    func accessoryEvent(_ accessory: AAUSBAccessory, connected: Bool,
+        sequence: UInt64, sourceTime: TimeInterval) {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault,
+            IORegistryEntryIDMatching(accessory.registryID))
+        let physicallyPresent = service != IO_OBJECT_NULL
+        if physicallyPresent { IOObjectRelease(service) }
+        let delay = (ProcessInfo.processInfo.systemUptime - sourceTime) * 1000
+        log("Accessory event #\(sequence) \(connected ? "connect" : "disconnect") "
+            + "deliveryDelayMs=\(String(format: "%.1f", delay)) "
+            + "phase=\(usbOperation?.rawValue ?? "idle") physicalRegistryPresent=\(physicallyPresent)")
+        if connected { self.connected(accessory) } else { disconnected(accessory) }
     }
     func connected(_ accessory: AAUSBAccessory) {
         let d = accessory.deviceDescriptorData

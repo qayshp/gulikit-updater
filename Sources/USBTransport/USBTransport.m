@@ -56,10 +56,14 @@ static NSSet<NSNumber *> *GUInterfaceIDs(io_service_t device, NSError **error) {
     NSSet<NSNumber *> *oldInterfaces = GUInterfaceIDs(device.ioService, error);
     if (!oldInterfaces) return nil;
     NSTimeInterval started = NSProcessInfo.processInfo.systemUptime;
-    // AccessoryAccess owns the device; suppress normal mass-storage matching.
-    // Interface publication can be asynchronous. Record pre-configuration IDs
-    // for diagnostics, but do not require a new ID: this device can retain it.
-    if (![device configureWithValue:1 matchInterfaces:NO error:error]) return nil;
+    // AccessoryAccess grants exclusive ownership. Its device may already be
+    // configured; do not tear down an existing configuration unnecessarily.
+    // If configuration is needed, suppress normal mass-storage matching.
+    const IOUSBConfigurationDescriptor *currentConfiguration = device.configurationDescriptor;
+    BOOL needsConfiguration = !currentConfiguration || currentConfiguration->bConfigurationValue != 1;
+    if (needsConfiguration && ![device configureWithValue:1 matchInterfaces:NO error:error]) return nil;
+    GUTrace(needsConfiguration ? @"USB configuration 1 selected with matching suppressed"
+        : @"USB configuration 1 already selected; redundant SET_CONFIGURATION skipped");
     uint64_t selectedID = 0;
     for (int attempt = 0; attempt < 100 && !_interface; attempt++) {
         io_iterator_t children = IO_OBJECT_NULL;

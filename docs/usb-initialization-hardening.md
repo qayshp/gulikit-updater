@@ -17,6 +17,11 @@ validation, or no-retry policy.
   not intentionally abandon or destroy a pipe while its worker is transferring.
 - A consumed firmware-write session no longer produces a misleading
   power-cycle message for a different, newly attached registry ID.
+- Listener callbacks now use a FIFO main-queue hop instead of independent
+  unstructured MainActor tasks. Source callback sequence/uptime and UI delivery
+  delay are logged separately, along with the active operation and physical
+  registry presence. A logical disconnect still invalidates readiness even if
+  the physical registry entry remains present.
 
 Six offline tests cover attachment-generation invalidation, same-ID reattachment,
 duplicate notifications, independent devices, and unknown/repeated detaches.
@@ -52,6 +57,14 @@ and endpoint addresses. Returned pipe identities must match the selected NS58.
 Interface discovery is bounded to two seconds; an actual open error is not
 retried.
 
+After exclusive AccessoryAccess open, the transport now checks the selected
+configuration descriptor. If configuration 1 is already selected, it avoids
+redundant SET_CONFIGURATION; otherwise it selects configuration 1 with matching
+suppressed. Interface/endpoint and device-identity checks apply in either case.
+An exclusive interface-open failure still fails closed, without a seize, reset,
+or retry fallback. This avoids unnecessary configuration churn, but its effect
+on the observed ownership transition still needs hardware verification.
+
 A preliminary test required an interface ID different from all pre-configuration
 IDs. It failed before any SCSI storage command because no such interface appeared
 within the bound. That requirement was removed: a new registry ID is not a
@@ -75,10 +88,33 @@ Primary references:
 - [Apple IOUSBHostPipe clearStall](https://developer.apple.com/documentation/iousbhost/iousbhostpipe/clearstall())
 - [USB-IF Bulk-Only Transport specification, sections 5 and 6](https://www.usb.org/sites/default/files/usbmassbulk_10.pdf)
 
-Hardware results for the revised packet receiver will be recorded separately
-from these offline/parser and lifecycle checks.
+## Initial revised-receiver hardware checks
+
+On November 15, 2026 (America/Los_Angeles), the `2ff5764` build was tested without
+selecting firmware. Install stayed disabled throughout.
+
+| Time | Result |
+| --- | --- |
+| 16:39:02.984 | Capacity IN returned exactly eight bytes: `00 00 00 76 00 00 10 00`. The next IN returned a thirteen-byte matching CSW, zero residue, status zero. The interface ID was retained across configuration. |
+| 16:39:03.100 | Capacity and FAT12 baseline inspection passed, label `GuliKit 3.7`. |
+| 16:39:25.750 | Accessory close completed; the app reported release to macOS. |
+| 16:39:29.827 | A second claim again returned the correct eight-byte capacity and a successful thirteen-byte CSW. |
+| 16:39:29.830 | A logical AccessoryAccess disconnect for the same registry ID arrived during the baseline worker. |
+| 16:39:29.948 | The worker result was rejected by the attachment-generation guard. Readiness was not published. |
+| 16:39:29.959 | After cleanup, AccessoryAccess reported the same registry ID attached again. |
+
+This verifies one complete inspection with the revised receiver and a second
+valid capacity transaction. It also exposes a release/reclaim ownership-event
+failure rather than a capacity packet failure in this run. No oversized packet
+or premature CSW was observed, so the earlier overrun's cause remains unknown.
+No firmware/storage-write command was sent in either check.
+
+The FIFO callback instrumentation and conditional-configuration change were
+added after this sequence. Their build and focused tests pass, but their
+hardware release/reclaim result is not yet established.
 
 The signed Debug build passed. With the local firmware and Linux-root fixtures,
 39 tests passed and the pinned ZIP-fixture extraction test was skipped because
-that archive fixture was not supplied. These offline results do not establish
-hardware compatibility of the revised capacity receiver.
+that archive fixture was not supplied. The subsequent focused run passed all
+23 parser/attachment tests. These offline results do not establish repeatable
+hardware handoff behavior.
