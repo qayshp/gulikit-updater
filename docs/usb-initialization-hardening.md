@@ -216,3 +216,21 @@ firmware/filesystem write followed. No retry occurred.** This is an interface
 configuration precondition failure, not a hardware result for BOT reset recovery.
 Whether explicit BOT initialization helps the earlier timeout is still unknown.
 The release-teardown experiment also remains unexercised in this fresh session.
+
+### User-authorized unlocked retry
+
+The user reported that the laptop had locked around the prior attempt and
+authorized one retry with it unlocked, followed, if needed, by a macOS-configured
+handoff and one additional reset-and-inspect attempt. The existing signed app
+instance was kept open; no rebuild, relaunch, or firmware selection occurred.
+
+At 22:21:49.399 the unlocked retry was requested for accessory registry
+4295408786. Exclusive claim succeeded at 22:21:49.426, but configuration again
+returned `0xe00002d8` (`kIOReturnNotReady`) at 22:21:49.729. The device wrapper was
+released, and the app reported the configuration failure at 22:21:49.730.
+There was no class-reset START log, clear-halt operation, SCSI inspection, or
+firmware write. No automatic retry followed.
+
+This establishes recurrence while the user reported an unlocked console. It
+does not exclude persistent USB state from an earlier lock, or establish the
+cause of the configuration failure. BOT reset recovery remains untested.
