@@ -234,3 +234,20 @@ firmware write. No automatic retry followed.
 This establishes recurrence while the user reported an unlocked console. It
 does not exclude persistent USB state from an earlier lock, or establish the
 cause of the configuration failure. BOT reset recovery remains untested.
+
+### Host handoff did not enumerate storage
+
+The user selected **Use with this Mac**, but no volume appeared, including in
+Disk Utility's unmounted-device view. The app received an accessory disconnect
+at 22:56:48.860 (delivered at 22:56:48.864). Read-only registry inspection found
+the exact NS58 `33fa:ff02`, serial `115411`, under a new registry ID 4295410352.
+Its descendants contained a composite-device service and a device user client,
+but no USB interface, mass-storage/SCSI stack, or block-media node. `diskutil`
+reported no external physical disk of the expected 487424-byte size.
+
+Thus this was not merely a missing Finder mount. Neither the routing selection
+nor the registry snapshot establishes why the storage interfaces were absent.
+The second authorized reset-and-inspect attempt was not invoked. The next
+requested setup step is a physical power cycle while the accessory remains
+assigned to the Mac, with the updater process left running. No configuration,
+mount, reset, or storage write was issued during these read-only checks.
