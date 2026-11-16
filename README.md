@@ -178,6 +178,13 @@ the extra cleanup contributes to the ownership loss; it does not assume the
 cause is an Apple framework bug. See the reproduction guide for its bounded,
 non-flashing test and inconclusive-result conditions.
 
+That close-only control was hardware-tested once on November 16 and still
+lost ownership shortly after successful Reopen, despite confirmed old-wrapper
+weak-reference clearance about six seconds beforehand. The extra explicit
+`destroy()` is therefore not required for this symptom. It remains a suspected
+lifecycle/platform interaction, not a confirmed Apple defect. See the
+[close-only result](docs/accessoryaccess-close-only-result-2026-11-16.md).
+
 ## Hardware experiment
 
 1. Start the signed app. With the controller off, connect a USB data cable,

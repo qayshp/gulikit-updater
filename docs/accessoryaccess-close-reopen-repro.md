@@ -18,6 +18,12 @@ call, including failure/quit cleanup. It is a control for the redundant cleanup
 in the original variant, not yet evidence of a fix. Framework/ARC destruction
 may still occur automatically when objects deallocate.
 
+One authorized close-only hardware cycle on November 16 also reproduced the
+ownership loss. AA close succeeded, the old wrapper's weak reference cleared,
+and Reopen succeeded about six seconds later; the framework entered a logical
+disconnect callback about 4 ms after Reopen PASS. The final state was stopped
+and no retry occurred. See the [close-only result](accessoryaccess-close-only-result-2026-11-16.md).
+
 ## Deliberately small scope
 
 The app registers a `33fa:ff02` listener, accepts only devices matching the
