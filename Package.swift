@@ -8,6 +8,7 @@ let package = Package(
         .library(name: "NS58Core", targets: ["NS58Core"]),
         .library(name: "USBTransport", targets: ["USBTransport"]),
         .library(name: "FirmwareDownload", targets: ["FirmwareDownload"]),
+        .library(name: "AccessoryReproCore", targets: ["AccessoryReproCore"]),
         .executable(name: "GuliKitUpdater", targets: ["GuliKitUpdater"]),
         .executable(name: "gulikit", targets: ["GuliKitCLI"]),
     ],
@@ -16,6 +17,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "NS58Core"),
+        .target(name: "AccessoryReproCore"),
         .target(name: "FirmwareDownload", dependencies: [
             "NS58Core", .product(name: "ZIPFoundation", package: "ZIPFoundation"),
         ]),
@@ -28,5 +30,6 @@ let package = Package(
         .testTarget(name: "FirmwareDownloadTests", dependencies: ["FirmwareDownload", "NS58Core"]),
         .testTarget(name: "NS58CoreTests", dependencies: ["NS58Core"]),
         .testTarget(name: "USBTransportTests", dependencies: ["USBTransport"]),
+        .testTarget(name: "AccessoryReproCoreTests", dependencies: ["AccessoryReproCore"]),
     ]
 )
