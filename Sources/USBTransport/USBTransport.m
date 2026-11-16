@@ -1,12 +1,45 @@
 #import "USBTransport.h"
 #import <IOKit/IOKitLib.h>
 #import <os/log.h>
+#import <objc/runtime.h>
 
 static void GUTrace(NSString *message) {
     static os_log_t log;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ log = os_log_create("com.qayshp.GuliKitUpdater", "usb-inspection"); });
     os_log_with_type(log, OS_LOG_TYPE_DEFAULT, "%{public}s", message.UTF8String);
+}
+
+// The sentinel retains labels only, never the framework object it observes.
+@interface GULifetimeTrace : NSObject
+@property(nonatomic, copy) NSString *identifier;
+@property(nonatomic, copy) NSString *kind;
+@property(nonatomic) uint64_t registryID;
+@end
+@implementation GULifetimeTrace
+- (void)dealloc {
+    GUTrace([NSString stringWithFormat:@"USB wrapper released kind=%@ trace=%@ registry=%llu",
+        _kind, _identifier, (unsigned long long)_registryID]);
+}
+@end
+
+static char GULifetimeTraceKey;
+static NSString *GUTraceLifetime(NSObject *object, NSString *kind, io_service_t service) {
+    @synchronized (object) {
+        GULifetimeTrace *trace = objc_getAssociatedObject(object, &GULifetimeTraceKey);
+        if (!trace) {
+            trace = [GULifetimeTrace new];
+            trace.identifier = NSUUID.UUID.UUIDString;
+            trace.kind = [kind copy];
+            uint64_t entryID = 0;
+            IORegistryEntryGetRegistryEntryID(service, &entryID);
+            trace.registryID = entryID;
+            objc_setAssociatedObject(object, &GULifetimeTraceKey, trace, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            GUTrace([NSString stringWithFormat:@"USB wrapper observed kind=%@ class=%@ trace=%@ registry=%llu",
+                kind, NSStringFromClass(object.class), trace.identifier, (unsigned long long)entryID]);
+        }
+        return trace.identifier;
+    }
 }
 
 static BOOL GUFail(NSError **error, NSString *message) {
@@ -50,15 +83,27 @@ static NSSet<NSNumber *> *GUInterfaceIDs(io_service_t device, NSError **error) {
     uint32_t _tag;
     BOOL _writeStarted;
 }
++ (NSString *)traceDeviceLifetime:(IOUSBHostDevice *)device {
+    return GUTraceLifetime(device, @"device", device.ioService);
+}
 - (instancetype)initWithDevice:(IOUSBHostDevice *)device error:(NSError **)error {
     self = [super init];
     if (!self) return nil;
     NSSet<NSNumber *> *oldInterfaces = GUInterfaceIDs(device.ioService, error);
     if (!oldInterfaces) return nil;
     NSTimeInterval started = NSProcessInfo.processInfo.systemUptime;
-    // AccessoryAccess grants exclusive ownership. Its device may already be
-    // configured; do not tear down an existing configuration unnecessarily.
-    // If configuration is needed, suppress normal mass-storage matching.
+    // AccessoryAccess grants exclusive ownership. Record public-method dispatch
+    // for diagnosis, but do not choose behavior using a private wrapper class.
+    // Keep the established matching-suppression policy when configuration is
+    // needed; the alternate overload did not resolve the observed NotReady.
+    SEL standardSelector = @selector(configureWithValue:error:);
+    SEL matchingSelector = @selector(configureWithValue:matchInterfaces:error:);
+    BOOL overridesStandard = class_getMethodImplementation(device.class, standardSelector)
+        != class_getMethodImplementation(IOUSBHostDevice.class, standardSelector);
+    BOOL overridesMatching = class_getMethodImplementation(device.class, matchingSelector)
+        != class_getMethodImplementation(IOUSBHostDevice.class, matchingSelector);
+    GUTrace([NSString stringWithFormat:@"USB configuration dispatch overrides standard=%@ matching-control=%@",
+        overridesStandard ? @"YES" : @"NO", overridesMatching ? @"YES" : @"NO"]);
     const IOUSBConfigurationDescriptor *currentConfiguration = device.configurationDescriptor;
     BOOL needsConfiguration = !currentConfiguration || currentConfiguration->bConfigurationValue != 1;
     if (needsConfiguration && ![device configureWithValue:1 matchInterfaces:NO error:error]) return nil;
@@ -96,6 +141,7 @@ static NSSet<NSNumber *> *GUInterfaceIDs(io_service_t device, NSError **error) {
         if (!_interface) [NSThread sleepForTimeInterval:0.02];
     }
     if (!_interface) { GUFail(error, @"NS58 USB interface 3 did not appear within 2 seconds"); return nil; }
+    GUTraceLifetime(_interface, @"interface", _interface.ioService);
     const IOUSBInterfaceDescriptor *d = _interface.interfaceDescriptor;
     if (d->bInterfaceNumber != 3 || d->bAlternateSetting != 0 || d->bInterfaceClass != 8
         || d->bInterfaceSubClass != 6 || d->bInterfaceProtocol != 0x50 || d->bNumEndpoints != 2) {

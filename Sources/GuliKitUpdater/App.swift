@@ -18,6 +18,7 @@ private struct OpenSession: @unchecked Sendable {
     let label: String
     let serial: String
     let attachmentGeneration: UUID
+    let deviceTraceID: String
 }
 
 private final class Listener: NSObject, AAUSBAccessoryListener, @unchecked Sendable {
@@ -241,7 +242,8 @@ private final class App: NSObject, NSApplicationDelegate {
         Task {
             do {
                 let device = try await accessory.open(serviceQueue: nil)
-                log("Exclusive USB claim granted. Opening the NS58 mass-storage interface for read-only inspection.")
+                let deviceTraceID = GUUSBTransport.traceDeviceLifetime(device)
+                log("Exclusive USB claim granted, device trace \(deviceTraceID). Opening the NS58 mass-storage interface for read-only inspection.")
                 do {
                     guard attachments.isCurrent(registryID: accessory.registryID, generation: generation) else {
                         throw NS58Error.invalid("Accessory ownership changed while requesting access; no inspection commands sent")
@@ -264,7 +266,7 @@ private final class App: NSObject, NSApplicationDelegate {
                             let inspection = try NS58FAT12.inspectBaseline(baseline)
                             return OpenSession(accessory: accessory, device: device, transport: transport,
                                 baseline: baseline, label: inspection.volumeLabel, serial: serial,
-                                attachmentGeneration: generation)
+                                attachmentGeneration: generation, deviceTraceID: deviceTraceID)
                         } catch { transport.close(); throw error }
                     }.value
                     guard attachments.isCurrent(registryID: accessory.registryID, generation: generation) else {
@@ -329,10 +331,18 @@ private final class App: NSObject, NSApplicationDelegate {
         // Invalidate readiness before closing. A failed accessory release must
         // never leave Install enabled on a transport that is already closed.
         session = nil; usbOperation = .release; busy = true; refreshButtons()
+        log("USB release begin, device trace \(opened.deviceTraceID).")
         opened.transport.close()
         Task {
             do {
                 try await opened.accessory.close()
+                log("Accessory close returned; completing device-client teardown, trace \(opened.deviceTraceID).")
+                // AA close invalidates the old device. Explicit destroy is
+                // documented as idempotent; complete it before allowing another
+                // claim rather than relying on later ARC/framework cleanup.
+                // Never perform this blocking call in a completion handler.
+                await Task.detached { opened.device.destroy() }.value
+                log("Device-client teardown returned, trace \(opened.deviceTraceID).")
                 usbOperation = nil; busy = false; status.stringValue = "Controller released to macOS."
                 log(status.stringValue); refreshButtons()
             } catch {

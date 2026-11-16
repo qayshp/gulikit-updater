@@ -109,9 +109,56 @@ failure rather than a capacity packet failure in this run. No oversized packet
 or premature CSW was observed, so the earlier overrun's cause remains unknown.
 No firmware/storage-write command was sent in either check.
 
-The FIFO callback instrumentation and conditional-configuration change were
-added after this sequence. Their build and focused tests pass, but their
-hardware release/reclaim result is not yet established.
+## Ordered-callback and conditional-configuration hardware checks
+
+The `e5255ef` build repeated the same non-flashing test:
+
+| Time | Result |
+| --- | --- |
+| 16:52:28.643 | Configuration 1 was already selected; SET_CONFIGURATION was skipped. |
+| 16:52:28.771 | Capacity/status and FAT12 baseline inspection passed, label `GuliKit 3.7`. |
+| 16:52:41.997 | Release to macOS completed. |
+| 16:52:45.468 | A second exclusive claim was granted; configuration was again skipped. Capacity and status were correct. |
+| 16:52:45.473 | The framework itself emitted disconnect callback 2 for the same registry ID. |
+| 16:52:45.476 | The callback reached the UI after 2.7 ms, during inspection; the physical registry entry still existed. |
+| 16:52:45.590 | The attachment-generation guard rejected the completed baseline result. |
+| 16:52:45.608 | Callback 3 was delivered as a reconnect after cleanup. |
+
+For this failure, neither redundant configuration nor delayed/reordered UI
+delivery is a necessary cause. The guard correctly prevents a logically
+detached inspection from enabling installation. Keeping the physical registry
+entry does not make the ownership notification safe to ignore.
+
+## Released-object lifetime experiment
+
+A subsequent diagnostic build tags device and interface wrappers with copied
+UUID labels and a deallocation sentinel. The sentinel does not retain the
+observed wrapper. This records object reuse/final release without logging
+addresses or issuing USB commands.
+
+Its Release path keeps controls disabled while awaiting accessory close and
+then explicitly calls the old device's documented, idempotent `destroy()` from
+a detached worker, not from a framework completion handler. The intended test
+is whether completing that cleanup before another claim avoids the observed
+logical ownership loss. A delayed destructor is a hypothesis, not established
+behavior.
+
+The first attempt at this build stopped before any storage command:
+configuration failed with `0xe00002d8` (`kIOReturnNotReady`) at 17:03:38.715.
+The actual wrapper was observed as `_AAIOUSBHostDevice`; no behavior is selected
+using that private class name. A separate test using the public two-argument
+configuration entry point named by AccessoryAccess documentation also returned
+NotReady at 17:08:47.289. Runtime comparison found neither configuration selector
+overridden relative to IOUSBHostDevice, so an overload-bypass explanation is
+not supported by that evidence.
+
+The alternate configuration overload was not kept: the code retains its prior
+`matchInterfaces:NO` policy when configuration is needed, avoiding a separate
+kernel-driver-matching change in the lifetime experiment.
+
+The lifetime/release comparison has therefore not yet run. It needs a fresh
+physical update-mode session with a passing initial inspection. No firmware
+was selected and no storage-write command was issued during these tests.
 
 The signed Debug build passed. With the local firmware and Linux-root fixtures,
 39 tests passed and the pinned ZIP-fixture extraction test was skipped because
