@@ -161,8 +161,17 @@ The policy permits it only once per transport, before any SCSI command or
 firmware write. The attempt is consumed before its first control request. Any
 failure closes the transport and stops without retry or fallback. An interface
 configuration failure happens before the reset request and must not be reported
-as a reset failure or success. See the [initialization investigation](docs/usb-initialization-hardening.md)
-for the current hardware result and limits.
+as a reset failure or success.
+
+On 2026-11-15 this explicit action completed once on the validated NS58: class
+reset and both clear-halt operations passed, followed by valid capacity/status
+and FAT12 inspection of `GuliKit 3.7`. It followed a rear-OFF/update-mode restart
+while assigned to macOS, a confirmed native volume mount, and handoff to the
+same running updater. No firmware was selected or written. This does not prove
+that reset was necessary, that the sequence is repeatable, or that the earlier
+configuration and release/reclaim failures are fixed. See the
+[initialization investigation](docs/usb-initialization-hardening.md) for the
+phase-by-phase evidence and limits.
 
 ## Offline CLI
 

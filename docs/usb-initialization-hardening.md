@@ -214,7 +214,8 @@ validated interface/pipes or reset method were reached.
 **No BOT reset request was sent. No clear-halt, SCSI inspection command, or
 firmware/filesystem write followed. No retry occurred.** This is an interface
 configuration precondition failure, not a hardware result for BOT reset recovery.
-Whether explicit BOT initialization helps the earlier timeout is still unknown.
+At this stage, whether explicit BOT initialization helps the earlier timeout
+was still unknown.
 The release-teardown experiment also remains unexercised in this fresh session.
 
 ### User-authorized unlocked retry
@@ -233,7 +234,7 @@ firmware write. No automatic retry followed.
 
 This establishes recurrence while the user reported an unlocked console. It
 does not exclude persistent USB state from an earlier lock, or establish the
-cause of the configuration failure. BOT reset recovery remains untested.
+cause of the configuration failure. BOT reset recovery had not yet been tested.
 
 ### Host handoff did not enumerate storage
 
@@ -272,3 +273,39 @@ that app cleanup was correct. This is a native mount pass, not yet an
 AccessoryAccess claim, BOT-reset, or app-inspection pass. A host-to-app handoff
 could still change the configuration state; the remaining authorized test must
 record those phases separately.
+
+### One authorized reset and inspection passed after native initialization
+
+The user manually selected **Use with GuliKit Updater** for the working native
+session, keeping the same app instance open, then confirmed attachment. The app
+received connect event 5 for registry 4295410735 at 23:04:51.830, delivered at
+23:04:51.832. The already-authorized remaining **Reset Transport & Inspect…**
+action was invoked exactly once, with no firmware selected.
+
+The following times are 2026-11-15 in America/Los_Angeles:
+
+| Time | Runtime evidence |
+| --- | --- |
+| 23:05:20.975 | Exclusive claim granted for registry 4295410735; device trace `0A1A7573-F86A-4C79-9AFC-F18EFAA9C167`. |
+| 23:05:20.976 | Configuration 1 was already selected; redundant SET_CONFIGURATION was skipped. |
+| 23:05:20.985 | Interface 3 opened in 9.0 ms, retained registry ID 4295410742, bulk IN `0x82` and OUT `0x02`. Class-reset request START was logged. |
+| 23:05:20.989 | Class reset on interface 3 PASS. |
+| 23:05:20.992 | Clear bulk IN halt PASS. |
+| 23:05:20.995 | Clear bulk OUT halt PASS; explicit BOT initialization complete. |
+| 23:05:20.996 | READ CAPACITY returned eight bytes `00 00 00 76 00 00 10 00`; the following thirteen-byte matching CSW had zero residue and successful status. |
+| 23:05:21.111 | `USB CLAIM + BOT READ PASS: 119 × 4096 bytes; FAT label GuliKit 3.7.` |
+
+The UI showed inspection passed and exclusive USB access. Firmware remained
+unselected and Install disabled. No firmware/filesystem write, automatic retry,
+release/reclaim cycle, or subsequent reset was performed. The successful session
+was left untouched. The phase PASS records establish successful framework
+completion, not an independent USB-bus capture of these requests.
+
+This is the first hardware pass for the explicit BOT-reset-plus-inspection
+path on this validated unit. The configuration precondition was satisfied by a
+fresh rear-OFF/update-mode start under macOS, followed by native storage
+initialization and handoff to the existing app. It demonstrates that this
+sequence can work, but does not isolate the benefit of BOT reset from the fresh
+controller/native session: no matching fresh-session no-reset comparison was
+performed. It does not establish repeatability, resolve the initial
+`kIOReturnNotReady` failures, or validate the release/reclaim teardown change.
