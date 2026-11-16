@@ -143,11 +143,26 @@ for the changes, offline checks, hardware evidence, and remaining hypotheses.
    controller powers itself off automatically. Restart it normally, then
    re-enter update mode to inspect the version again.
 
-No automatic retry or USB reset is performed. Any attempted firmware transfer consumes
+No automatic retry or USB device/port reset is performed. Any attempted firmware transfer consumes
 the current USB session; reconnect in update mode for another attempt. A
 matching label after a same-version reinstall cannot independently prove that
 flash pages changed. Preserve the transfer result and physical power-off
 observation together.
+
+### Explicit non-flashing transport-reset diagnostic
+
+**Reset Transport & Inspect…** is separate from normal Connect & Inspect and
+Install. After its confirmation it attempts one standard Bulk-Only Transport
+class reset, clears the bulk IN halt, then clears the bulk OUT halt, before the
+first inspection command. This changes transport state but sends no firmware
+or filesystem writes; it is not a USB port/device reset.
+
+The policy permits it only once per transport, before any SCSI command or
+firmware write. The attempt is consumed before its first control request. Any
+failure closes the transport and stops without retry or fallback. An interface
+configuration failure happens before the reset request and must not be reported
+as a reset failure or success. See the [initialization investigation](docs/usb-initialization-hardening.md)
+for the current hardware result and limits.
 
 ## Offline CLI
 

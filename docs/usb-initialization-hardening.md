@@ -175,3 +175,44 @@ The signed Debug build passed. With the local firmware and Linux-root fixtures,
 that archive fixture was not supplied. The subsequent focused run passed all
 23 parser/attachment tests. These offline results do not establish repeatable
 hardware handoff behavior.
+
+## Fresh unlocked session and explicitly approved BOT reset diagnostic
+
+The user confirmed a full physical power cycle, fresh update-mode attachment,
+and a manually unlocked/active console. The saved `464d666` build was launched.
+At 21:42:00.262 configuration 1 was already selected, and the validated interface
+opened normally. The first READ CAPACITY CBW OUT then timed out with `0/31`
+bytes and `0xe00002d6`, before capacity data or a release/reclaim comparison.
+No console-session notification was observed during that attempt; absence of
+these notifications is not a complete proof that no lock-state transition
+occurred.
+
+The user then explicitly approved **one** standard mass-storage transport reset
+followed by inspection. A separate **Reset Transport & Inspect…** action was
+implemented. Normal Connect & Inspect and the firmware-write path do not call it.
+
+The fixed recovery plan follows USB-IF BOT sections 3.1 and 5.3.4:
+
+1. Interface-class reset on endpoint zero: setup bytes `21 ff 00 00 03 00 00 00`.
+2. Clear halt on the validated bulk IN pipe.
+3. Clear halt on the validated bulk OUT pipe.
+
+The reset reservation is one-shot and requires no prior SCSI command or write.
+It is consumed before caller I/O, including when a later control operation fails.
+An unsupported reset is not ignored. Any phase failure closes the transport,
+stops before inspection, and has no retry/fallback. No USB device/port reset,
+REQUEST SENSE, or firmware write was added. Eight new policy/request tests pass;
+the complete offline run has 47 passing tests and one archive-fixture skip.
+
+### Actual approved-action result
+
+The signed diagnostic app was launched with no firmware selected. At
+21:53:46.600 the reset action was requested. Exclusive claim succeeded, but
+configuration failed with `kIOReturnNotReady` at 21:53:46.933, before the
+validated interface/pipes or reset method were reached.
+
+**No BOT reset request was sent. No clear-halt, SCSI inspection command, or
+firmware/filesystem write followed. No retry occurred.** This is an interface
+configuration precondition failure, not a hardware result for BOT reset recovery.
+Whether explicit BOT initialization helps the earlier timeout is still unknown.
+The release-teardown experiment also remains unexercised in this fresh session.

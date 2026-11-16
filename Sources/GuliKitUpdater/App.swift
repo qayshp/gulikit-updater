@@ -71,6 +71,7 @@ private final class App: NSObject, NSApplicationDelegate {
     private let firmwareStatus = NSTextField(wrappingLabelWithString: "")
     private let readinessStatus = NSTextField(wrappingLabelWithString: "")
     private let inspectButton = NSButton(title: "Connect & Inspect", target: nil, action: nil)
+    private let resetInspectButton = NSButton(title: "Reset Transport & Inspect…", target: nil, action: nil)
     private let fileButton = NSButton(title: "Choose Firmware…", target: nil, action: nil)
     private let downloadButton = NSButton(title: "Download V3.7", target: nil, action: nil)
     private let updateButton = NSButton(title: "Install V3.7", target: nil, action: nil)
@@ -90,11 +91,12 @@ private final class App: NSObject, NSApplicationDelegate {
         let title = NSTextField(labelWithString: "GuliKit Elves 2 · NS58")
         title.font = .boldSystemFont(ofSize: 22)
         status.maximumNumberOfLines = 3
-        let deviceButtons = NSStackView(views: [inspectButton, releaseButton])
+        let deviceButtons = NSStackView(views: [inspectButton, resetInspectButton, releaseButton])
         let firmwareButtons = NSStackView(views: [downloadButton, fileButton, updateButton])
         deviceButtons.spacing = 10; firmwareButtons.spacing = 10
         firmwareStatus.textColor = .secondaryLabelColor
         for (button, action) in [(inspectButton, #selector(inspect)), (fileButton, #selector(chooseFirmware)),
+            (resetInspectButton, #selector(resetTransportAndInspect)),
             (downloadButton, #selector(downloadFirmware)), (updateButton, #selector(update)), (releaseButton, #selector(releaseController))] {
             button.target = self; button.action = action
         }
@@ -176,6 +178,7 @@ private final class App: NSObject, NSApplicationDelegate {
     }
     func refreshButtons() {
         inspectButton.isEnabled = !busy && session == nil && accessories.count == 1
+        resetInspectButton.isEnabled = inspectButton.isEnabled
         fileButton.isEnabled = !busy
         downloadButton.isEnabled = !busy
         updateButton.isEnabled = !busy && session != nil && firmwareURL != nil && writingRegistryID == nil
@@ -243,6 +246,19 @@ private final class App: NSObject, NSApplicationDelegate {
         refreshButtons()
     }
     @objc func inspect() {
+        beginInspection(resetTransport: false)
+    }
+    @objc func resetTransportAndInspect() {
+        guard !busy, session == nil, accessories.count == 1 else { return }
+        let alert = NSAlert()
+        alert.messageText = "Reset the NS58 mass-storage transport once?"
+        alert.informativeText = "Sends one USB mass-storage class reset, clears the IN and OUT endpoint halts, then inspects the controller. No firmware or disk writes are sent. This is not a USB device/port reset. Stops on any failure; no automatic retry."
+        alert.addButton(withTitle: "Reset Once & Inspect")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        beginInspection(resetTransport: true)
+    }
+    private func beginInspection(resetTransport: Bool) {
         guard !busy, accessories.count == 1, let accessory = accessories.values.first,
               let generation = attachments.generation(for: accessory.registryID) else { return }
         guard writingRegistryID != accessory.registryID else {
@@ -252,11 +268,13 @@ private final class App: NSObject, NSApplicationDelegate {
         inspectionFailure = nil
         usbOperation = .inspection
         busy = true; refreshButtons(); log("Requesting exclusive USB access; approve the macOS prompt.")
+        if resetTransport { log("Explicit one-shot BOT transport initialization requested; no firmware writes.") }
         Task {
             do {
                 let device = try await accessory.open(serviceQueue: nil)
                 let deviceTraceID = GUUSBTransport.traceDeviceLifetime(device)
-                log("Exclusive USB claim granted, device trace \(deviceTraceID). Opening the NS58 mass-storage interface for read-only inspection.")
+                let mode = resetTransport ? "explicit transport initialization and inspection" : "read-only inspection"
+                log("Exclusive USB claim granted, device trace \(deviceTraceID). Opening the NS58 mass-storage interface for \(mode).")
                 do {
                     guard attachments.isCurrent(registryID: accessory.registryID, generation: generation) else {
                         throw NS58Error.invalid("Accessory ownership changed while requesting access; no inspection commands sent")
@@ -271,6 +289,7 @@ private final class App: NSObject, NSApplicationDelegate {
                         do { transport = try GUUSBTransport(device: device) }
                         catch { throw NS58Error.invalid("Opening the USB mass-storage interface failed: \(error)") }
                         do {
+                            if resetTransport { try transport.resetBulkOnlyTransport() }
                             let capacity = try transport.readCapacity()
                             guard capacity == Data([0,0,0,118,0,0,16,0]) else {
                                 throw NS58Error.invalid("Unexpected NS58 SCSI capacity")

@@ -82,6 +82,7 @@ static NSSet<NSNumber *> *GUInterfaceIDs(io_service_t device, NSError **error) {
     uint8_t _outputAddress;
     uint32_t _tag;
     BOOL _writeStarted;
+    GUBOTResetPolicy *_resetPolicy;
 }
 + (NSString *)traceDeviceLifetime:(IOUSBHostDevice *)device {
     return GUTraceLifetime(device, @"device", device.ioService);
@@ -89,6 +90,7 @@ static NSSet<NSNumber *> *GUInterfaceIDs(io_service_t device, NSError **error) {
 - (instancetype)initWithDevice:(IOUSBHostDevice *)device error:(NSError **)error {
     self = [super init];
     if (!self) return nil;
+    _resetPolicy = [GUBOTResetPolicy new];
     NSSet<NSNumber *> *oldInterfaces = GUInterfaceIDs(device.ioService, error);
     if (!oldInterfaces) return nil;
     NSTimeInterval started = NSProcessInfo.processInfo.systemUptime;
@@ -202,6 +204,58 @@ static NSSet<NSNumber *> *GUInterfaceIDs(io_service_t device, NSError **error) {
     }
     return transferred == data.length || GUFail(error,
         [NSString stringWithFormat:@"%@ short USB transfer: %lu of %lu bytes", phase, transferred, data.length]);
+}
+- (BOOL)resetBulkOnlyTransportWithError:(NSError **)error {
+    if (!_interface || !_input || !_output) return GUFail(error, @"USB transport is closed; reset refused");
+    // Consume the one-shot gate before the first control request. Never reset
+    // an active/previous SCSI transaction or recover-and-retry a firmware write.
+    if (![_resetPolicy beginWithCommandCount:_tag writingStarted:_writeStarted error:error]) return NO;
+    for (NSNumber *step in GUBOTResetPolicy.steps) {
+        NSError *underlying = nil;
+        NSString *phase;
+        BOOL success;
+        switch ((GUBOTResetStep)step.unsignedIntegerValue) {
+            case GUBOTResetStepClassReset: {
+                phase = @"class reset (interface 3)";
+                IOUSBDeviceRequest request = [GUBOTResetPolicy bulkOnlyResetRequest];
+                NSUInteger transferred = 0;
+                GUTrace(@"Explicit BOT initialization: class reset request START (no data phase)");
+                success = [_interface sendDeviceRequest:request data:nil bytesTransferred:&transferred
+                    completionTimeout:10 error:&underlying];
+                if (success && transferred != 0) {
+                    success = NO;
+                    GUFail(&underlying, @"Unexpected data in a zero-length BOT reset request");
+                }
+                break;
+            }
+            case GUBOTResetStepClearBulkIn:
+                phase = @"clear bulk IN halt";
+                GUTrace(@"Explicit BOT initialization: clear bulk IN START");
+                success = [_input clearStallWithError:&underlying];
+                break;
+            case GUBOTResetStepClearBulkOut:
+                phase = @"clear bulk OUT halt";
+                GUTrace(@"Explicit BOT initialization: clear bulk OUT START");
+                success = [_output clearStallWithError:&underlying];
+                break;
+            default:
+                [self close]; return GUFail(error, @"Invalid BOT reset plan; inspection stopped");
+        }
+        if (!success) {
+            if (error) {
+                NSString *message = [NSString stringWithFormat:
+                    @"Explicit BOT initialization failed at %@: %@ (%@, 0x%08x). No retry or firmware write.",
+                    phase, underlying.localizedDescription, underlying.domain, (uint32_t)underlying.code];
+                NSMutableDictionary *info = [@{NSLocalizedDescriptionKey: message} mutableCopy];
+                if (underlying) info[NSUnderlyingErrorKey] = underlying;
+                *error = [NSError errorWithDomain:@"GuliKitUSB" code:4 userInfo:info];
+            }
+            [self close]; return NO;
+        }
+        GUTrace([NSString stringWithFormat:@"Explicit BOT initialization: %@ PASS", phase]);
+    }
+    GUTrace(@"Explicit BOT initialization complete; first inspection command may now be sent");
+    return YES;
 }
 - (NSData *)command:(const uint8_t *)cdb length:(NSUInteger)length input:(BOOL)input
     payload:(NSData *)payload count:(NSUInteger)count error:(NSError **)error {

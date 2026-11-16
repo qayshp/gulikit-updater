@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 #import <IOUSBHost/IOUSBHost.h>
 #import "GUBOTResponse.h"
+#import "GUBOTResetPolicy.h"
 
 NS_ASSUME_NONNULL_BEGIN
 /// Open only after AAUSBAccessory has granted this app exclusive ownership.
@@ -9,6 +10,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// observe its final release. Does not issue a USB request.
 + (NSString *)traceDeviceLifetime:(IOUSBHostDevice *)device;
 - (nullable instancetype)initWithDevice:(IOUSBHostDevice *)device error:(NSError **)error;
+/// Explicit opt-in diagnostic, once before any SCSI command. No disk/firmware
+/// writes. Fails closed on any reset or clear-halt failure; never retries.
+- (BOOL)resetBulkOnlyTransportWithError:(NSError **)error;
 - (nullable NSData *)readCapacityWithError:(NSError **)error;
 - (nullable NSData *)readBlocksAtLBA:(uint32_t)lba count:(uint16_t)count error:(NSError **)error;
 - (BOOL)writeBlocksAtLBA:(uint32_t)lba data:(NSData *)data error:(NSError **)error;
