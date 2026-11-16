@@ -63,6 +63,7 @@ private final class App: NSObject, NSApplicationDelegate {
     private var writesAcknowledged = false
     private enum USBOperation: String { case inspection, release, installation }
     private var usbOperation: USBOperation?
+    private var consoleSessionObservers: [NSObjectProtocol] = []
     private var window: NSWindow!
     private var logView = NSTextView()
     private var status = NSTextField(labelWithString: "Connect NS58 (Setting + Home), then attach it to this app from the macOS USB accessory menu.")
@@ -120,6 +121,18 @@ private final class App: NSObject, NSApplicationDelegate {
         window.minSize = NSSize(width: 720, height: 600)
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         refreshButtons()
+        // AccessoryAccess documents logical disconnect/reconnect around
+        // console-session transitions. Observe public workspace events without
+        // collecting identities or changing lock/sleep settings. These events
+        // are not a complete screen-lock detector.
+        for name in [NSWorkspace.sessionDidBecomeActiveNotification,
+                     NSWorkspace.sessionDidResignActiveNotification] {
+            consoleSessionObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
+                forName: name, object: nil, queue: nil
+            ) { notification in
+                logger.notice("Console session event \(notification.name.rawValue, privacy: .public) sourceUptime=\(ProcessInfo.processInfo.systemUptime)")
+            })
+        }
         log("macOS 27 AccessoryAccess listener starting (33fa:ff02 only).")
         let criteria = AAUSBAccessoryMatchingCriteria(deviceMatchingCriteria: .init(vendorID: 0x33fa, productID: 0xff02))
         Task {

@@ -160,6 +160,16 @@ The lifetime/release comparison has therefore not yet run. It needs a fresh
 physical update-mode session with a passing initial inspection. No firmware
 was selected and no storage-write command was issued during these tests.
 
+The later UI-control attempt was blocked because the Mac was locked and manual
+unlock was required. AccessoryAccess's SDK documents automatic logical detach
+and restoration for console-session transitions such as fast user switching or
+logout. This is a relevant environment variable, not proof that locking caused
+the earlier release/reclaim failure. The app now logs public NSWorkspace
+session-active/resigned notifications for correlation, without collecting user
+identities or changing lock/sleep settings. Those notifications are not a
+complete lock-state detector. The next comparison requires a stable, manually
+unlocked console session.
+
 The signed Debug build passed. With the local firmware and Linux-root fixtures,
 39 tests passed and the pinned ZIP-fixture extraction test was skipped because
 that archive fixture was not supplied. The subsequent focused run passed all
