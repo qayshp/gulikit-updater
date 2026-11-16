@@ -309,3 +309,48 @@ sequence can work, but does not isolate the benefit of BOT reset from the fresh
 controller/native session: no matching fresh-session no-reset comparison was
 performed. It does not establish repeatability, resolve the initial
 `kIOReturnNotReady` failures, or validate the release/reclaim teardown change.
+
+### Explicit teardown completed, but ordinary reclaim still lost ownership
+
+The user next authorized exactly one **Release Controller** followed by one
+ordinary **Connect & Inspect**, without another reset or firmware write, and
+reported that the Mac would remain unlocked. The same app process and physical
+NS58 registry entry were used. Release was invoked once; the ordinary inspection
+was invoked once after all release-completion messages appeared.
+
+| Time (2026-11-15, America/Los_Angeles) | Runtime evidence |
+| --- | --- |
+| 23:08:37.509 | Release began for old device trace `0A1A7573-F86A-4C79-9AFC-F18EFAA9C167`. |
+| 23:08:37.511 | The old interface wrapper was released. |
+| 23:08:37.522 | Accessory close returned successfully. |
+| 23:08:37.523 | Explicit device-client `destroy()` returned. |
+| 23:08:37.524–37.525 | The UI reported released; the old device wrapper deallocated. |
+| 23:08:41.480 | Ordinary inspection obtained a new exclusive claim, trace `D5F1EAEF-F356-4F6D-B2E6-934A8526837A`, same physical registry 4295410735. |
+| 23:08:41.481–41.482 | Configuration 1 remained selected, SET_CONFIGURATION was skipped, and interface 3 opened in 0.4 ms. |
+| 23:08:41.482 | READ CAPACITY returned the expected eight bytes and a valid thirteen-byte matching CSW with zero residue/status. |
+| 23:08:41.484 | AccessoryAccess disconnect callback 6 entered for registry 4295410735. |
+| 23:08:41.486 | The disconnect reached the UI after 2.4 ms, during inspection, with `physicalRegistryPresent=true`. |
+| 23:08:41.598–41.607 | The new interface closed, the post-worker attachment-generation guard discarded the stale inspection result, and the new device wrapper deallocated. |
+| 23:08:41.611–41.621 | AccessoryAccess connect callback 7 reattached the same physical registry; UI delivery took 9.1 ms. |
+
+The final result was **inspection failed: Accessory ownership changed during
+inspection; stale result discarded**. Install stayed disabled. No retry, BOT
+reset, firmware selection, or storage write occurred in this test.
+
+The lifetime experiment has now been exercised. Completed app-side teardown
+and old-wrapper deallocation did not prevent the same logical ownership-loss
+pattern seen at 16:52. This contradicts the narrow hypothesis that an old
+retained wrapper or an unfinished explicit teardown call alone caused that
+failure. It does not exclude asynchronous framework/driver-rematching state
+after those APIs returned. The correct response remains fail-closed: physical
+registry presence does not justify ignoring an AccessoryAccess disconnect.
+
+The targeted system-log window also contained a Virtual Machine Accessories
+LaunchServices cache-seed invalidation for GuliKit Updater at 23:08:41.484 and a
+remembered-assignment message at 23:08:41.609. These are correlations, not an
+identified cause of the ownership change. No explanatory ownership-transition
+reason was exposed in the narrowly filtered log results.
+
+This was an ordinary no-additional-reset reclaim of the previously reset
+controller session. It is not a fresh-session no-reset comparison. No further
+USB actions followed the failed test.

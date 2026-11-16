@@ -169,7 +169,14 @@ and FAT12 inspection of `GuliKit 3.7`. It followed a rear-OFF/update-mode restar
 while assigned to macOS, a confirmed native volume mount, and handoff to the
 same running updater. No firmware was selected or written. This does not prove
 that reset was necessary, that the sequence is repeatable, or that the earlier
-configuration and release/reclaim failures are fixed. See the
+configuration and release/reclaim failures are fixed.
+
+A subsequent one-shot Release Controller → ordinary Connect & Inspect test
+completed accessory close, explicit device-client destruction, and old-wrapper
+deallocation, but still received a logical AccessoryAccess disconnect during
+inspection. Capacity/status had already succeeded and the physical device
+remained present. The stale result was correctly discarded and Install stayed
+disabled. No further reset or firmware write was performed. See the
 [initialization investigation](docs/usb-initialization-hardening.md) for the
 phase-by-phase evidence and limits.
 
