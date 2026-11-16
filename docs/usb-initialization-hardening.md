@@ -251,3 +251,24 @@ The second authorized reset-and-inspect attempt was not invoked. The next
 requested setup step is a physical power cycle while the accessory remains
 assigned to the Mac, with the updater process left running. No configuration,
 mount, reset, or storage write was issued during these read-only checks.
+
+### Rear OFF restart restored the native macOS volume without unplugging
+
+The user clarified the actual recovery sequence: press the rear OFF button,
+hold Setting, press Home, then release Setting. The USB cable remained connected.
+The controller remained assigned to the Mac, and its drive appeared in Finder.
+
+Read-only checks confirmed the exact NS58 device (registry 4295410735),
+`kUSBCurrentConfiguration = 1`, interface 3 with the expected mass-storage BOT
+class/subclass/protocol, and the complete Apple mass-storage/SCSI/block-storage
+stack. The 487424-byte IOMedia was `/dev/disk10`; its FAT12 volume was mounted at
+`/Volumes/NO NAME` with 4096-byte blocks. The updater process remained PID 4622;
+there was no app rebuild or relaunch.
+
+The rear-OFF/update-mode transition restored a working native storage session
+without requiring a physical cable disconnect. It does not isolate controller
+state from USB re-enumeration/driver matching as the cause of recovery, or prove
+that app cleanup was correct. This is a native mount pass, not yet an
+AccessoryAccess claim, BOT-reset, or app-inspection pass. A host-to-app handoff
+could still change the configuration state; the remaining authorized test must
+record those phases separately.
