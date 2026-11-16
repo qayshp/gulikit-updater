@@ -25,6 +25,9 @@ verified before the repro was opened. The user assigned Gulikit to
 The app contains no USB configuration, interface creation, bulk-pipe, SCSI,
 BOT/reset, firmware-loading, or controller-sector I/O path. Each numbered
 action was invoked once. No retry followed the failure.
+This scopes the absence of commands to the repro app. Without a bus capture,
+it does not assert that macOS/AccessoryAccess generated no underlying USB
+control traffic while managing ownership.
 
 ## Observed timeline
 

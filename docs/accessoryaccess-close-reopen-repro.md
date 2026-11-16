@@ -9,7 +9,7 @@ One authorized hardware cycle on November 15, 2026 reproduced delayed logical
 ownership loss: Claim and Close passed; Reopen returned successfully, but about
 93 ms later AccessoryAccess reported disconnect while the physical registry
 remained present. The final state was recoveryRequired, not a stable API-cycle
-pass. No storage or reset command was sent. See the
+pass. No storage or reset command was sent by the repro app. See the
 [captured result and limits](accessoryaccess-repro-result-2026-11-15.md).
 
 ## Deliberately small scope
