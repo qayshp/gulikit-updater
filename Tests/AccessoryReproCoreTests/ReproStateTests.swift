@@ -122,4 +122,34 @@ import Testing
         #expect(state.phase == .recoveryRequired)
         #expect(!state.canClaim && !state.canClose && !state.canReopen)
     }
+
+    @Test func retainedClosedDeviceBlocksReopenAsInconclusiveControl() throws {
+        var state = ReproState()
+        state.attach(registryID: 17)
+        let claim = try state.begin(.claim)
+        let claimed = state.complete(claim)
+        #expect(claimed)
+        let close = try state.begin(.close)
+        let closed = state.complete(close, closedClientReleased: false)
+        #expect(!closed)
+        #expect(state.phase == .recoveryRequired)
+        #expect(state.failure?.contains("inconclusive") == true)
+        #expect(!state.canReopen)
+        #expect(throws: ReproError.self) { try state.begin(.reopen) }
+    }
+
+    @Test func releasedClosedDeviceAllowsExactlyOneReopen() throws {
+        var state = ReproState()
+        state.attach(registryID: 17)
+        let claim = try state.begin(.claim)
+        let claimed = state.complete(claim)
+        #expect(claimed)
+        let close = try state.begin(.close)
+        let closed = state.complete(close, closedClientReleased: true)
+        #expect(closed && state.canReopen)
+        let reopen = try state.begin(.reopen)
+        let reopened = state.complete(reopen)
+        #expect(reopened)
+        #expect(throws: ReproError.self) { try state.begin(.reopen) }
+    }
 }

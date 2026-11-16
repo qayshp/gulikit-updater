@@ -5,12 +5,18 @@
 the firmware updater. It is not a firmware updater and does not depend on
 `USBTransport`, `NS58Core`, or `FirmwareDownload`.
 
-One authorized hardware cycle on November 15, 2026 reproduced delayed logical
+One authorized hardware cycle using the original close-plus-explicit-destroy
+variant on November 15, 2026 reproduced delayed logical
 ownership loss: Claim and Close passed; Reopen returned successfully, but about
 93 ms later AccessoryAccess reported disconnect while the physical registry
 remained present. The final state was recoveryRequired, not a stable API-cycle
 pass. No storage or reset command was sent by the repro app. See the
 [captured result and limits](accessoryaccess-repro-result-2026-11-15.md).
+
+The current **close-only variant** removes every explicit `device.destroy()`
+call, including failure/quit cleanup. It is a control for the redundant cleanup
+in the original variant, not yet evidence of a fix. Framework/ARC destruction
+may still occur automatically when objects deallocate.
 
 ## Deliberately small scope
 
@@ -19,8 +25,10 @@ previously validated USB serial profile `115411`, and exposes three one-shot
 actions:
 
 1. **Claim Once** calls `AAUSBAccessory.open` and holds the returned device.
-2. **Close Once** awaits `AAUSBAccessory.close`, then awaits the returned
-   device's idempotent `destroy()` on a detached worker. Each return is logged.
+2. **Close Once** awaits `AAUSBAccessory.close`, drops the app's strong device
+   reference, then observes its weak reference for at most two seconds. Reopen
+   remains disabled until that weak reference clears and the attachment is
+   still current. No explicit `destroy()` call is made.
 3. **Reopen Once** calls `AAUSBAccessory.open` again for the current attachment.
 
 It does **not** select a USB configuration, create an IOUSBHostInterface, open
@@ -98,8 +106,13 @@ complete screen-lock detector.
   fails, the additional configuration/interface/storage path is a variable to
   isolate next; the result does not by itself identify a macOS bug.
 - The app-level lifecycle matches the investigated explicit close/destroy
-  ordering, but omits transport setup and commands intentionally. This is not
-  yet a claim that the minimal reproduction reproduces the hardware failure.
+  ordering only in the original November 15 variant. The current close-only
+  variant intentionally excludes explicit destruction to isolate that variable.
+- A weak reference that does not clear within two seconds yields an
+  **inconclusive lifetime control; Reopen not attempted**. Framework caching of
+  an invalidated wrapper is possible; this is not proof of a leak or failed
+  close. Weak-reference clearance also does not establish completion of all
+  internal framework or kernel cleanup.
 
 ## Offline checks
 
@@ -113,12 +126,14 @@ The pure `AccessoryReproCore` tests cover ordered one-shot actions, duplicate
 button attempts, wrong ordering, API failure, stale generation rejection, and
 failure retention across a same-registry logical reconnect. The app's Xcode
 dependency graph contains only its app target and `AccessoryReproCore`.
+The close-only gate additionally rejects completion while the old wrapper is
+still retained; fourteen reproduction-state tests pass offline.
 
 Relevant public contracts were checked in the installed macOS SDK:
 `AAUSBAccessory.h` says completed close invalidates all returned device clients
 and permits reopen; `AAUSBAccessoryListener.h` documents ordered callback-queue
 delivery and console-session detach/reconnect; `AAUSBAccessoryManager.h`
 requires a normal Dock app and the AccessoryAccess entitlement; and
-`IOUSBHostObject.h` documents idempotent destroy. Destroy must not be called
-from a framework completion handler, so this repro awaits it on a detached
-worker instead.
+`IOUSBHostObject.h` documents idempotent destroy. The original variant awaited
+explicit destruction on a detached worker, outside a completion handler. The
+current control relies on AA close plus ordinary object lifetime instead.

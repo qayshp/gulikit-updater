@@ -74,7 +74,7 @@ public struct ReproState: Sendable {
 
     @discardableResult
     public mutating func complete(_ token: Token, physicalRegistryPresent: Bool = true,
-        returnedRegistryID: UInt64? = nil) -> Bool {
+        returnedRegistryID: UInt64? = nil, closedClientReleased: Bool = true) -> Bool {
         guard physicalRegistryPresent,
               returnedRegistryID == nil || returnedRegistryID == token.registryID else {
             fail("Physical USB instance disappeared or the returned client identity differs; no pass published.")
@@ -87,6 +87,10 @@ public struct ReproState: Sendable {
         }
         guard isCurrent(token), phase == expected else {
             fail("Attachment changed during \(token.operation.rawValue); stale result discarded.")
+            return false
+        }
+        if token.operation == .close, !closedClientReleased {
+            fail("Old device wrapper remains retained; lifetime control is inconclusive. Reopen was not attempted.")
             return false
         }
         phase = switch token.operation {

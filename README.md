@@ -171,6 +171,13 @@ test, so those paths are not required to trigger the observed symptom. This is
 not yet proof of a framework defect. See the
 [AA-only result](docs/accessoryaccess-repro-result-2026-11-15.md).
 
+The current reproduction is a **close-only control**: it removes the original
+variant's explicit device destruction after AA close and observes old-wrapper
+release through a weak reference before enabling Reopen. This tests whether
+the extra cleanup contributes to the ownership loss; it does not assume the
+cause is an Apple framework bug. See the reproduction guide for its bounded,
+non-flashing test and inconclusive-result conditions.
+
 ## Hardware experiment
 
 1. Start the signed app. With the controller off, connect a USB data cable,

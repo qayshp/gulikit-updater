@@ -40,6 +40,7 @@ private final class ReproApp: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private var state = ReproState()
     private var candidates: [UInt64: AAUSBAccessory] = [:]
     private var client: Client?
+    private weak var lastClosedDevice: IOUSBHostDevice?
     private var inFlight = false
     private var registering = true
     private var window: NSWindow!
@@ -64,13 +65,13 @@ private final class ReproApp: NSObject, NSApplicationDelegate, NSWindowDelegate 
         NSApp.mainMenu = menu
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 640),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "AccessoryAccess Repro — No Storage Commands"
+        window.title = "AccessoryAccess Repro — Close Only / No Storage Commands"
         window.delegate = self
         let title = NSTextField(labelWithString: "AccessoryAccess close / reopen")
         title.font = .boldSystemFont(ofSize: 22)
         let scope = NSTextField(wrappingLabelWithString:
             "Validated-device fingerprint: 33fa:ff02, serial 115411. These are not proven model- or unit-unique identifiers.\n"
-            + "No firmware loader, USB configuration, interface creation, SCSI command, reset, or disk-write path.")
+            + "CLOSE-ONLY VARIANT: no explicit destroy() calls. No firmware, USB configuration, interface, SCSI, reset, or controller-sector I/O.")
         let instructions = NSTextField(wrappingLabelWithString:
             "Use a fresh update-mode session and assign Gulikit to AccessoryAccess Repro in the USB menu. "
             + "Close the normal updater before assigning here. Click each numbered action once. "
@@ -109,6 +110,7 @@ private final class ReproApp: NSObject, NSApplicationDelegate, NSWindowDelegate 
             })
         }
         log("Listener registration START; no automatic claim or USB command. Process \(ProcessInfo.processInfo.processIdentifier).")
+        log("Variant: AA close only; no explicit device.destroy(). Reopen additionally waits for the old device weak reference to clear (bounded 2 seconds).")
         Task {
             do {
                 let criteria = AAUSBAccessoryMatchingCriteria(deviceMatchingCriteria: .init(vendorID: 0x33fa, productID: 0xff02))
@@ -169,7 +171,7 @@ private final class ReproApp: NSObject, NSApplicationDelegate, NSWindowDelegate 
         let idle = !inFlight && !registering && candidates.count == 1
         claimButton.isEnabled = idle && state.canClaim
         closeButton.isEnabled = idle && state.canClose
-        reopenButton.isEnabled = idle && state.canReopen
+        reopenButton.isEnabled = idle && state.canReopen && lastClosedDevice == nil
         status.stringValue = "State: \(state.phase.rawValue) · generation \(state.generation) · candidates \(candidates.count)"
             + (state.failure.map { "\nSTOP: \($0) No retry. Use rear OFF, then Setting + Home; reassign a fresh registry session." } ?? "")
             + (state.phase == .finished ? "\nAA CLAIM → CLOSE → REOPEN API PASS. No interface/SCSI/storage behavior was tested. Quit to close the final client." : "")
@@ -190,6 +192,11 @@ private final class ReproApp: NSObject, NSApplicationDelegate, NSWindowDelegate 
         guard !inFlight, !registering, candidates.count == 1,
               let registryID = state.registryID, let accessory = candidates[registryID],
               serial(registryID) == "115411" else { return }
+        if operation == .reopen, lastClosedDevice != nil {
+            state.fail("Old device wrapper is still retained. Reopen was not attempted; lifetime control is inconclusive.")
+            log("STOP: old device weak reference is not clear. No reopen or retry.")
+            refresh(); return
+        }
         let token: ReproState.Token
         do { token = try state.begin(operation) }
         catch { log("Action rejected: \(error)"); return }
@@ -222,25 +229,43 @@ private final class ReproApp: NSObject, NSApplicationDelegate, NSWindowDelegate 
         }
     }
     @objc private func closeOnce() {
-        guard !inFlight, let opened = client else { return }
+        // Capture only the accessory and a copied trace. Capturing Client or
+        // IOUSBHostDevice in the polling Task would itself keep the probe alive.
+        guard !inFlight, let accessory = client?.accessory, let traceID = client?.traceID else { return }
         let token: ReproState.Token
         do { token = try state.begin(.close) }
         catch { log("Action rejected: \(error)"); return }
-        client = nil; inFlight = true; refresh()
-        log("close START trace=\(opened.traceID).")
+        lastClosedDevice = client?.device
+        inFlight = true; refresh()
+        log("close START trace=\(traceID). AA close only; no explicit destroy().")
         Task {
             do {
-                try await opened.accessory.close()
-                log("Accessory close returned trace=\(opened.traceID).")
-                await Task.detached { opened.device.destroy() }.value
-                log("Device-client destroy returned trace=\(opened.traceID).")
-                if state.complete(token) { log("close PASS. Reopen is explicit, never automatic.") }
-                else { log("STOP: attachment changed during close. No reopen.") }
+                try await accessory.close()
+                log("Accessory close returned trace=\(traceID); no explicit destroy() issued.")
+                client = nil
+                log("Old client strong reference dropped trace=\(traceID).")
+                let deadline = ProcessInfo.processInfo.systemUptime + 2
+                while lastClosedDevice != nil, state.isCurrent(token),
+                    ProcessInfo.processInfo.systemUptime < deadline {
+                    do { try await Task.sleep(for: .milliseconds(10)) }
+                    catch {
+                        state.fail("Lifetime observation cancelled; no reopen.")
+                        log("STOP: lifetime observation cancelled. No reopen or retry.")
+                        break
+                    }
+                }
+                let cleared = lastClosedDevice == nil
+                log("Old device weak reference cleared=\(cleared) trace=\(traceID). This does not measure internal framework/kernel cleanup.")
+                if state.complete(token, closedClientReleased: cleared) {
+                    log("close-only PASS; old device weak reference cleared. Reopen remains explicit.")
+                } else {
+                    log("STOP: close-only control did not complete or attachment changed. No reopen.")
+                }
             } catch {
+                client = nil
                 state.fail("close failed: \(error)")
                 log("STOP: close failed: \(error). No reopen.")
-                await Task.detached { opened.device.destroy() }.value
-                log("Failed-close device destroy returned.")
+                log("Failed-close strong reference dropped; no explicit destroy() or retry.")
             }
             inFlight = false; refresh()
         }
@@ -248,8 +273,7 @@ private final class ReproApp: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private func cleanup(_ opened: Client) async {
         do { try await opened.accessory.close(); log("Cleanup close returned trace=\(opened.traceID).") }
         catch { log("Cleanup close ERROR trace=\(opened.traceID): \(error).") }
-        await Task.detached { opened.device.destroy() }.value
-        log("Cleanup device destroy returned trace=\(opened.traceID).")
+        log("Cleanup close-only scope ending trace=\(opened.traceID); no explicit destroy().")
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
