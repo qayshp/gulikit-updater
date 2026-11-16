@@ -354,3 +354,45 @@ reason was exposed in the narrowly filtered log results.
 This was an ordinary no-additional-reset reclaim of the previously reset
 controller session. It is not a fresh-session no-reset comparison. No further
 USB actions followed the failed test.
+
+## Offline hardening and separate AA-only reproduction
+
+After the bounded tests above, the user reported that repeated manual button
+use eventually left a bad state, and that rear OFF followed by fresh update mode
+allowed another successful installation. This is a user-reported additional
+result, not a second instrumented install by the agent; no correlated BOT or
+power-off timing was collected for that manual install.
+
+The main updater now fails closed on a per-physical-registry recovery gate.
+USB failures, unexpected ownership loss, release, and any installation attempt
+consume that instance. Same-ID logical detach/reconnect cannot clear it; a new
+USB instance is required. The quarantine is restored across launches only in
+the same kernel boot namespace. A new boot does not inherit reused registry
+IDs; unavailable boot identity is logged as in-memory-only persistence.
+
+Ordinary same-instance reclaim after Release is deliberately disabled in the
+main workflow until reliable. The separate
+[AA-only reproduction](accessoryaccess-close-reopen-repro.md) retains explicit,
+one-shot Claim/Close/Reopen actions without transport setup or storage commands.
+It isolates that lifecycle from firmware and from interface/BOT behavior; it
+has been built offline but not launched or hardware-tested in this change.
+
+Additional main-app guards reject inspect while already claimed, local file
+selection while busy, multiple-candidate installation, and reset confirmation
+after its original attachment changes. USB cleanup close outcomes are now
+logged rather than swallowed. Local firmware/download errors do not set a USB
+quarantine. Install additionally requires user confirmation of the physical
+NS58 label, kept distinct from the validated USB/FAT profile. See
+[model identity](model-identification.md).
+
+The proven firmware/metadata WRITE(10) sequence, payload layout, and order are
+unchanged. These are offline-verified safeguards, not a claim that the underlying
+AccessoryAccess ownership problem is fixed. Neither newly built app was
+launched for another controller operation during this implementation.
+
+Verification of these changes: both final signed Debug app builds and strict
+signature checks passed. The complete offline suite, with the local BIN and
+captured Linux-root fixtures, had **70 passing tests and one skipped pinned-ZIP
+fixture test**. This includes twelve pure reproduction-state tests and eleven
+main safety/descriptor tests. The existing captured Linux write-plan comparison
+also passed. No transport/payload implementation change was made.

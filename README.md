@@ -31,6 +31,10 @@ label. No second install was performed. A same-version reinstall does not
 independently establish that every flash page was rewritten. See the
 [hardware validation record](docs/hardware-validation-2026-11-15.md).
 
+The user later reported another successful manual reinstall after rear-OFF
+recovery from repeated button use. That additional install was not instrumented
+by the agent; it is recorded separately in the initialization investigation.
+
 This result uses a Debug-only, class-scoped sandbox exception. The original
 permissions failed to create IOUSBHostInterface (`0xe00002c9`); interface
 creation works with the exception. An earlier existing session timed out on
@@ -86,10 +90,13 @@ swift build
 scripts/build-app.sh --unsigned
 ```
 
-No root access is used by the new app. The app requests only the specific NS58
-updater identity (`33fa:ff02`). This first experiment also requires serial
+No root access is used by the new app. The app requests the captured updater
+USB fingerprint (`33fa:ff02`), not a proven model-unique identity. This first experiment also requires serial
 `115411`, the previously validated controller, and a clean `GuliKit 3.7` FAT12
-baseline. Other units/versions remain future work.
+baseline. Serial uniqueness is not established. Other units/versions remain future work.
+Installation additionally requires physical-label confirmation that the
+controller is **NS58 / Elves 2**, not NS59 / Elves 2 Pro. See
+[model identification and limits](docs/model-identification.md).
 
 ### Debug sandbox experiment
 
@@ -119,6 +126,43 @@ The proven firmware-write transaction is unchanged and is never automatically
 retried. See [USB initialization hardening](docs/usb-initialization-hardening.md)
 for the changes, offline checks, hardware evidence, and remaining hypotheses.
 
+### Recovery and action guards
+
+After a USB failure, unexpected ownership loss, Release, or installation
+attempt, the affected physical USB registry instance cannot be inspected/reset
+or installed again. A same-ID logical reconnect does not clear the gate. The
+main app asks for rear **OFF**, then **Setting + Home**, native Mac volume
+initialization, and reattachment of a new USB instance. The cable can remain
+connected. Release deliberately requires a fresh session because ordinary
+same-instance reclaim is still unreliable; the separate repro below preserves
+that sequence for controlled diagnostics.
+
+Recovery records survive app relaunch within the same kernel boot when its
+boot-session namespace is available. They are discarded across boots, since
+registry IDs are not durable device identities. If the namespace cannot be
+read, the log explicitly reports that only the current-process gate is active.
+There is no Clear Error / Retry button that silently reuses a failed session.
+Invalid local firmware or download failures do not quarantine a healthy USB
+session. Method-level and modal-target guards supplement disabled buttons.
+Copy Log includes timestamps for reporting a failure.
+
+### Minimal non-flashing AccessoryAccess reproduction
+
+The separate **AccessoryRepro** Xcode scheme builds **AccessoryAccess Repro**:
+explicit **Claim Once → Close Once → Reopen Once**, with callback and cleanup
+timing. It does not configure USB, create a storage interface, send SCSI or reset
+commands, load firmware, or read/write controller sectors. Its only package
+dependency is the separate pure `AccessoryReproCore` state machine.
+
+```sh
+scripts/build-accessory-repro.sh
+```
+
+The default is build-only, uses separate DerivedData, and never kills the
+updater. Do not run both apps for the same controller or start a hardware cycle
+implicitly. See the [reproduction guide](docs/accessoryaccess-close-reopen-repro.md)
+for the explicit launch/test sequence, safety gates, and evidence boundaries.
+
 ## Hardware experiment
 
 1. Start the signed app. With the controller off, connect a USB data cable,
@@ -135,7 +179,10 @@ for the changes, offline checks, hardware evidence, and remaining hypotheses.
    `NS58_Elves2_V3.7.bin`. Its size and SHA-256 must match the known release.
    Download automatically selects the verified BIN; a second file selection
    is unnecessary. The window shows its full path and the installation blocker.
-5. Click **Install V3.7**, review the confirmation, and select **Install Once**.
+5. Check the controller's physical model label and tick the **NS58 / Elves 2**
+   confirmation. The checkbox is cleared on attachment/session changes; a
+   matching USB/FAT profile alone is not a model guarantee. Click **Install
+   V3.7**, review the confirmation, and select **Install Once**.
    The app sends the padded firmware in one WRITE(10) transaction and the FAT
    metadata in a second. It validates the BOT status of each transfer.
 6. The app watches the USB registry for up to 60 seconds. An accessory detach
