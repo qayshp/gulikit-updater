@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C00000000000000000000016 /* Flash Drive Repro App.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000013; };
+		C00000000000000000000023 /* AccessoryReproCore in Flash Frameworks */ = {isa = PBXBuildFile; productRef = C00000000000000000000021; };
 		B00000000000000000000016 /* AccessoryAccessRepro App.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000013; };
 		B00000000000000000000023 /* AccessoryReproCore in Frameworks */ = {isa = PBXBuildFile; productRef = B00000000000000000000021; };
 		A00000000000000000000016 /* Sources/GuliKitUpdater/App.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* Sources/GuliKitUpdater/App.swift */; };
@@ -16,6 +18,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		C00000000000000000000010 /* USB Flash Drive Repro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "USB Flash Drive Repro.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000010 /* AccessoryAccess Repro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "AccessoryAccess Repro.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000013 /* AccessoryAccessRepro App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/AccessoryAccessRepro/App.swift; sourceTree = SOURCE_ROOT; };
 		A00000000000000000000010 /* GuliKit Updater.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "GuliKit Updater.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -23,6 +26,12 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		C00000000000000000000008 /* Flash Repro Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (C00000000000000000000023 /* AccessoryReproCore in Flash Frameworks */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B00000000000000000000008 /* Repro Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -56,6 +65,7 @@
 			children = (
 				A00000000000000000000010 /* GuliKit Updater.app */,
 				B00000000000000000000010 /* AccessoryAccess Repro.app */,
+				C00000000000000000000010 /* USB Flash Drive Repro.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -63,6 +73,18 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		C00000000000000000000002 /* USBFlashDriveRepro */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C00000000000000000000006;
+			buildPhases = (C00000000000000000000007, C00000000000000000000008, C00000000000000000000009,);
+			buildRules = ();
+			dependencies = ();
+			name = USBFlashDriveRepro;
+			packageProductDependencies = (C00000000000000000000021 /* AccessoryReproCore */,);
+			productName = USBFlashDriveRepro;
+			productReference = C00000000000000000000010;
+			productType = "com.apple.product-type.application";
+		};
 		B00000000000000000000002 /* AccessoryAccessRepro */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B00000000000000000000006;
@@ -106,6 +128,14 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
+					C00000000000000000000002 = {
+						CreatedOnToolsVersion = 27.0;
+						ProvisioningStyle = Automatic;
+						SystemCapabilities = {
+							com.apple.AccessoryAccess = { enabled = 1; };
+							com.apple.Sandbox = { enabled = 1; };
+						};
+					};
 					B00000000000000000000002 = {
 						CreatedOnToolsVersion = 27.0;
 						ProvisioningStyle = Automatic;
@@ -146,11 +176,18 @@
 			targets = (
 				A00000000000000000000002 /* GuliKitUpdater */,
 				B00000000000000000000002 /* AccessoryAccessRepro */,
+				C00000000000000000000002 /* USBFlashDriveRepro */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		C00000000000000000000009 /* Flash Repro Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B00000000000000000000009 /* Repro Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -167,6 +204,12 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		C00000000000000000000007 /* Flash Repro Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (C00000000000000000000016 /* Flash Drive Repro App.swift in Sources */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B00000000000000000000007 /* Repro Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -184,6 +227,43 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		C00000000000000000000014 /* Flash Repro Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/AccessoryRepro.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QV8ZH37356;
+				ENABLE_APP_SANDBOX = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Config/FlashDriveRepro-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.qayshp.USBFlashDriveRepro;
+				PRODUCT_NAME = "USB Flash Drive Repro";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG FLASH_DRIVE_REPRO";
+			};
+			name = Debug;
+		};
+		C00000000000000000000015 /* Flash Repro Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/AccessoryRepro.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QV8ZH37356;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Config/FlashDriveRepro-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.qayshp.USBFlashDriveRepro;
+				PRODUCT_NAME = "USB Flash Drive Repro";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) FLASH_DRIVE_REPRO";
+			};
+			name = Release;
+		};
 		B00000000000000000000014 /* Repro Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -289,6 +369,12 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		C00000000000000000000006 /* Flash Repro configuration list */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (C00000000000000000000014, C00000000000000000000015,);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		B00000000000000000000006 /* Repro configuration list */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (B00000000000000000000014, B00000000000000000000015,);
@@ -323,6 +409,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		C00000000000000000000021 /* AccessoryReproCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AccessoryReproCore;
+		};
 		B00000000000000000000021 /* AccessoryReproCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = AccessoryReproCore;

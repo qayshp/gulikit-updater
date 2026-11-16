@@ -185,6 +185,14 @@ weak-reference clearance about six seconds beforehand. The extra explicit
 lifecycle/platform interaction, not a confirmed Apple defect. See the
 [close-only result](docs/accessoryaccess-close-only-result-2026-11-16.md).
 
+A separate **FlashDriveRepro** scheme now builds **USB Flash Drive Repro** for
+an ordinary spare BOT USB flash drive. It keeps the same non-flashing,
+close-only lifecycle, excludes the NS58 tuple, and requires explicit pinning of
+one cached USB identity before any action. It does not issue storage commands.
+This control is built and offline-tested, **not hardware-tested**. See the
+[setup-only instructions and safety limits](docs/usb-flash-drive-repro.md);
+preparing it does not start a Claim/Close/Reopen cycle.
+
 ## Hardware experiment
 
 1. Start the signed app. With the controller off, connect a USB data cable,

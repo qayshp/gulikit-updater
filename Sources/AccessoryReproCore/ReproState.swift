@@ -48,7 +48,7 @@ public struct ReproState: Sendable {
         generation &+= 1
         registryID = nil
         phase = .recoveryRequired
-        failure = "Accessory disconnected. Rear OFF, then Setting + Home; reassign the fresh session."
+        failure = "Accessory disconnected. A fresh physical attachment is required; no retry."
     }
 
     public mutating func begin(_ operation: Operation) throws -> Token {

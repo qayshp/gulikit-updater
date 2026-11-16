@@ -85,7 +85,8 @@ An immediate logical disconnect/reconnect with the same registry ID does not
 clear that latch. Use rear OFF and Setting + Home to establish a genuinely new
 device session. The latch is deliberately in memory; relaunching does not prove
 physical recovery and must not be used as a retry mechanism. Quit closes any
-held final client, logging close and destroy completion; quitting and window
+held final client, logging close completion and scope ending without an explicit
+destroy; quitting and window
 closure are blocked while an operation or registration is in flight.
 
 **Copy Log** copies the timestamped app log to the clipboard. Unified logs use
@@ -143,3 +144,8 @@ requires a normal Dock app and the AccessoryAccess entitlement; and
 `IOUSBHostObject.h` documents idempotent destroy. The original variant awaited
 explicit destruction on a detached worker, outside a completion handler. The
 current control relies on AA close plus ordinary object lifetime instead.
+
+For the separately built ordinary-drive control, see
+[USB Flash Drive Repro](usb-flash-drive-repro.md). Its explicit target-pin gate
+does not broaden this NS58-only product. The setup checkpoint stops before
+pinning or running a hardware cycle.
