@@ -204,8 +204,9 @@ preparing it does not start a Claim/Close/Reopen cycle.
    Inspection does not send storage-write commands, but it does reconfigure
    USB and can temporarily remove the mounted volume from Finder. A failed
    inspection keeps Install disabled and leaves its error visible.
-4. Click **Download V3.7** to retrieve and verify the supported release, or
-   click **Choose Firmware** and select the extracted official
+4. Open **Firmware Versions & Official Downloads…**, choose the NS58 official
+   firmware page, download/extract in the browser, then click **Choose Firmware**
+   and select the extracted official
    `NS58_Elves2_V3.7.bin`. Its size and SHA-256 must match the known release.
    Download automatically selects the verified BIN; a second file selection
    is unnecessary. The window shows its full path and the installation blocker.
@@ -277,6 +278,38 @@ NS58_TEST_LINUX_ROOT=/path/to/linux-root-final.bin swift test
 ```
 
 ## Firmware download
+
+### Official release information
+
+**Firmware Versions & Official Downloads…** opens an advisory catalog for main
+firmware on NS58, NS59, NS39, and NS38. It checks the model-specific official
+release pages at runtime, uses a 24-hour success cache and five-minute failure
+backoff, and retains a clearly dated bundled snapshot when checking fails.
+The NS39-only V5.9 heading on the shared KK3 page does not advance the NS38
+record. Bluetooth firmware is not compared in this initial catalog.
+
+After a user-requested NS58 read-only inspection and physical-model
+confirmation, a fresh catalog observation can report newer firmware, a matching
+version, or an installed version newer than the listed release. Stale, bundled,
+ambiguous, or failed checks never mean **up to date**. A readable older NS58
+label is now reported without treating it as a transport failure, but the
+original strict V3.7 baseline must still pass before any installation.
+Selecting another catalog model does not identify or claim a USB controller,
+and does not add installation support for it.
+
+Use **Open Official Firmware Page** to download in the normal browser, including
+any CAPTCHA. Extract the package there and use **Choose Firmware…** for the
+known NS58 V3.7 BIN. The optional third-party action is explicitly labeled
+**Mirror V3.7 (optional)**; announcement checks never download firmware or
+change the pinned firmware hashes.
+
+The CLI `gulikit releases [--refresh] [--json]` and explicit maintainer script
+`scripts/check-firmware-catalog.sh` support catalog review without USB access.
+Ordinary builds and tests do not depend on GuliKit's site. See
+[firmware version checking](docs/firmware-version-checking.md) for cache,
+failure, maintenance, and validation boundaries.
+
+### Existing optional mirror
 
 The downloader retrieves the **supported V3.7 release**, rather than assuming
 every future release is compatible with this experimental write plan. GuliKit's

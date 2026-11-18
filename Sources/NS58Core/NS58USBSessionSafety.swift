@@ -56,9 +56,9 @@ public struct NS58USBSessionSafety: Sendable {
     }
 
     public func canInstall(registryID: UInt64, busy: Bool, hasClaim: Bool,
-        hasFirmware: Bool, modelConfirmed: Bool, previouslyWrote: Bool,
+        hasFirmware: Bool, modelConfirmed: Bool, baselineValidated: Bool, previouslyWrote: Bool,
         candidateCount: Int = 1) -> Bool {
-        !busy && hasClaim && hasFirmware && modelConfirmed && !previouslyWrote
+        !busy && hasClaim && hasFirmware && modelConfirmed && baselineValidated && !previouslyWrote
             && candidateCount == 1 && reason(for: registryID) == nil
     }
 }

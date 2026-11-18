@@ -17,7 +17,7 @@ struct NS58USBSessionSafetyTests {
         var safety = NS58USBSessionSafety()
         safety.requireFreshSession(42, reason: reason)
         #expect(!safety.canInspect(registryID: 42, busy: false, hasClaim: false, candidateCount: 1, previouslyWrote: false))
-        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: true, modelConfirmed: true, previouslyWrote: false))
+        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: true, modelConfirmed: true, baselineValidated: true, previouslyWrote: false))
     }
 
     @Test func logicalReattachDoesNotClearPhysicalInstanceBlock() {
@@ -72,13 +72,19 @@ struct NS58USBSessionSafetyTests {
 
     @Test func installationRequiresPhysicalModelConfirmationAndAllOtherGates() {
         let safety = NS58USBSessionSafety()
-        #expect(safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: true, modelConfirmed: true, previouslyWrote: false))
-        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: true, modelConfirmed: false, previouslyWrote: false))
-        #expect(!safety.canInstall(registryID: 42, busy: true, hasClaim: true, hasFirmware: true, modelConfirmed: true, previouslyWrote: false))
-        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: false, hasFirmware: true, modelConfirmed: true, previouslyWrote: false))
-        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: false, modelConfirmed: true, previouslyWrote: false))
-        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: true, modelConfirmed: true, previouslyWrote: true))
-        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: true, modelConfirmed: true, previouslyWrote: false, candidateCount: 2))
+        #expect(safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: true, modelConfirmed: true, baselineValidated: true, previouslyWrote: false))
+        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: true, modelConfirmed: false, baselineValidated: true, previouslyWrote: false))
+        #expect(!safety.canInstall(registryID: 42, busy: true, hasClaim: true, hasFirmware: true, modelConfirmed: true, baselineValidated: true, previouslyWrote: false))
+        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: false, hasFirmware: true, modelConfirmed: true, baselineValidated: true, previouslyWrote: false))
+        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: false, modelConfirmed: true, baselineValidated: true, previouslyWrote: false))
+        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: true, modelConfirmed: true, baselineValidated: true, previouslyWrote: true))
+        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: true, hasFirmware: true, modelConfirmed: true, baselineValidated: true, previouslyWrote: false, candidateCount: 2))
+    }
+
+    @Test func advisoryObservationCannotAuthorizeAnUnvalidatedWriteBaseline() {
+        let safety = NS58USBSessionSafety()
+        #expect(!safety.canInstall(registryID: 42, busy: false, hasClaim: true,
+            hasFirmware: true, modelConfirmed: true, baselineValidated: false, previouslyWrote: false))
     }
 
     private func descriptor() -> Data {

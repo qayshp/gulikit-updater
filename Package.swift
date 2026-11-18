@@ -8,6 +8,7 @@ let package = Package(
         .library(name: "NS58Core", targets: ["NS58Core"]),
         .library(name: "USBTransport", targets: ["USBTransport"]),
         .library(name: "FirmwareDownload", targets: ["FirmwareDownload"]),
+        .library(name: "FirmwareCatalog", targets: ["FirmwareCatalog"]),
         .library(name: "AccessoryReproCore", targets: ["AccessoryReproCore"]),
         .executable(name: "GuliKitUpdater", targets: ["GuliKitUpdater"]),
         .executable(name: "gulikit", targets: ["GuliKitCLI"]),
@@ -18,18 +19,20 @@ let package = Package(
     targets: [
         .target(name: "NS58Core"),
         .target(name: "AccessoryReproCore"),
+        .target(name: "FirmwareCatalog"),
         .target(name: "FirmwareDownload", dependencies: [
             "NS58Core", .product(name: "ZIPFoundation", package: "ZIPFoundation"),
         ]),
         .target(name: "USBTransport", publicHeadersPath: "include", cSettings: [.unsafeFlags(["-fobjc-arc"])], linkerSettings: [
             .linkedFramework("Foundation"), .linkedFramework("IOKit"), .linkedFramework("IOUSBHost"),
         ]),
-        .executableTarget(name: "GuliKitUpdater", dependencies: ["NS58Core", "USBTransport", "FirmwareDownload"],
+        .executableTarget(name: "GuliKitUpdater", dependencies: ["NS58Core", "USBTransport", "FirmwareDownload", "FirmwareCatalog"],
             linkerSettings: [.linkedFramework("AccessoryAccess"), .linkedFramework("AppKit")]),
-        .executableTarget(name: "GuliKitCLI", dependencies: ["NS58Core", "FirmwareDownload"]),
+        .executableTarget(name: "GuliKitCLI", dependencies: ["NS58Core", "FirmwareDownload", "FirmwareCatalog"]),
         .testTarget(name: "FirmwareDownloadTests", dependencies: ["FirmwareDownload", "NS58Core"]),
         .testTarget(name: "NS58CoreTests", dependencies: ["NS58Core"]),
         .testTarget(name: "USBTransportTests", dependencies: ["USBTransport"]),
         .testTarget(name: "AccessoryReproCoreTests", dependencies: ["AccessoryReproCore"]),
+        .testTarget(name: "FirmwareCatalogTests", dependencies: ["FirmwareCatalog"]),
     ]
 )

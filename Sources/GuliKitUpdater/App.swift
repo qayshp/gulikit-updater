@@ -17,6 +17,8 @@ private struct OpenSession: @unchecked Sendable {
     let transport: GUUSBTransport
     let baseline: Data
     let label: String
+    let installedVersion: String?
+    let installationBlockReason: String?
     let serial: String
     let attachmentGeneration: UUID
     let deviceTraceID: String
@@ -87,6 +89,8 @@ private final class App: NSObject, NSApplicationDelegate {
     private let downloadButton = NSButton(title: "Download V3.7", target: nil, action: nil)
     private let updateButton = NSButton(title: "Install V3.7", target: nil, action: nil)
     private let releaseButton = NSButton(title: "Release Controller", target: nil, action: nil)
+    private let catalogButton = NSButton(title: "Firmware Versions & Official Downloads…", target: nil, action: nil)
+    private lazy var catalog = FirmwareCatalogWindowController { [weak self] message in self?.log(message) }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -106,7 +110,7 @@ private final class App: NSObject, NSApplicationDelegate {
         appMenu.submenu = NSMenu()
         appMenu.submenu?.addItem(withTitle: "Quit GuliKit Updater", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         NSApp.mainMenu = menu
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 760),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 840),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "GuliKit Updater — NS58 Experiment"
         let title = NSTextField(labelWithString: "GuliKit Elves 2 · NS58")
@@ -114,6 +118,7 @@ private final class App: NSObject, NSApplicationDelegate {
         status.maximumNumberOfLines = 3
         let deviceButtons = NSStackView(views: [inspectButton, resetInspectButton, releaseButton])
         let firmwareButtons = NSStackView(views: [downloadButton, fileButton, updateButton, copyLogButton])
+        downloadButton.title = "Mirror V3.7 (optional)"
         deviceButtons.spacing = 10; firmwareButtons.spacing = 10
         firmwareStatus.textColor = .secondaryLabelColor
         for (button, action) in [(inspectButton, #selector(inspect)), (fileButton, #selector(chooseFirmware)),
@@ -122,13 +127,14 @@ private final class App: NSObject, NSApplicationDelegate {
             (downloadButton, #selector(downloadFirmware)), (updateButton, #selector(update)), (releaseButton, #selector(releaseController))] {
             button.target = self; button.action = action
         }
+        catalogButton.target = self; catalogButton.action = #selector(showFirmwareCatalog)
         logView.isEditable = false
         logView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         let scroll = NSScrollView()
         scroll.documentView = logView; scroll.hasVerticalScroller = true
         identityStatus.textColor = .secondaryLabelColor
         let stack = NSStackView(views: [title, controllerStatus, deviceButtons,
-            identityStatus, modelConfirmation, firmwareStatus, firmwareButtons, readinessStatus, status, scroll])
+            identityStatus, modelConfirmation, catalogButton, firmwareStatus, firmwareButtons, readinessStatus, status, scroll])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 16
         stack.translatesAutoresizingMaskIntoConstraints = false
         window.contentView!.addSubview(stack)
@@ -143,9 +149,10 @@ private final class App: NSObject, NSApplicationDelegate {
         for label in [controllerStatus, identityStatus, firmwareStatus, readinessStatus, status] {
             label.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
-        window.minSize = NSSize(width: 820, height: 720)
+        window.minSize = NSSize(width: 860, height: 800)
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         refreshButtons()
+        catalog.startAutomaticCheck()
         // AccessoryAccess documents logical disconnect/reconnect around
         // console-session transitions. Observe public workspace events without
         // collecting identities or changing lock/sleep settings. These events
@@ -208,6 +215,7 @@ private final class App: NSObject, NSApplicationDelegate {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(logView.string, forType: .string)
     }
+    @objc private func showFirmwareCatalog() { catalog.present() }
     @objc func confirmPhysicalModel() {
         guard !busy, let opened = session,
               safety.reason(for: opened.accessory.registryID) == nil else { return }
@@ -255,13 +263,14 @@ private final class App: NSObject, NSApplicationDelegate {
         updateButton.isEnabled = session.map {
             safety.canInstall(registryID: $0.accessory.registryID, busy: busy, hasClaim: true,
                 hasFirmware: firmwareURL != nil, modelConfirmed: modelConfirmedRegistryID == $0.accessory.registryID,
+                baselineValidated: $0.installationBlockReason == nil,
                 previouslyWrote: writingRegistryID == $0.accessory.registryID, candidateCount: accessories.count)
         } ?? false
         releaseButton.isEnabled = !busy && session != nil
         modelConfirmation.isEnabled = !busy && session != nil && recoveryReason == nil
         modelConfirmation.state = session != nil && modelConfirmedRegistryID == session?.accessory.registryID ? .on : .off
         if let opened = session {
-            controllerStatus.stringValue = "Validated updater profile matched · \(opened.label) · inspection passed · exclusive USB access"
+            controllerStatus.stringValue = "NS58 transport/read profile matched · \(opened.label) · read-only inspection passed · exclusive USB access"
             identityStatus.stringValue = "USB 33fa:ff02 · serial \(opened.serial) · captured test-unit/profile match. These identifiers are not proven exclusive to NS58; verify the physical model label."
         } else if let recoveryReason {
             controllerStatus.stringValue = "USB session needs a fresh start: \(recoveryReason.explanation)"
@@ -274,7 +283,7 @@ private final class App: NSObject, NSApplicationDelegate {
         if let firmwareURL {
             firmwareStatus.stringValue = "Firmware selected and verified: \(firmwareURL.lastPathComponent)\n\(firmwareURL.path)"
         } else {
-            firmwareStatus.stringValue = "Firmware: none selected. Download V3.7 selects the verified BIN automatically, or choose a local file."
+            firmwareStatus.stringValue = "Firmware: none selected. Open the official page in Firmware Versions, download/extract in your browser, then choose the verified V3.7 BIN. The mirror is optional and third-party."
         }
         if busy {
             readinessStatus.stringValue = "Operation in progress. Installation controls are locked."
@@ -284,6 +293,8 @@ private final class App: NSObject, NSApplicationDelegate {
             readinessStatus.stringValue = "Install unavailable: this USB session already attempted an update. Power off and re-enter update mode."
         } else if session == nil {
             readinessStatus.stringValue = "Install unavailable: Connect & Inspect has not succeeded. Downloading firmware does not inspect or write the controller."
+        } else if let reason = session?.installationBlockReason {
+            readinessStatus.stringValue = "The volume label was read, but installation is not validated for this baseline: \(reason) No write or automatic retry is permitted."
         } else if modelConfirmedRegistryID != session?.accessory.registryID {
             readinessStatus.stringValue = "Install unavailable: check the physical NS58 model label and tick its confirmation. USB identity and GuliKit 3.7 alone are not a model guarantee."
         } else if firmwareURL == nil {
@@ -291,6 +302,8 @@ private final class App: NSObject, NSApplicationDelegate {
         } else {
             readinessStatus.stringValue = "Ready for a V3.7 reinstall. Install opens a confirmation before any firmware write."
         }
+        catalog.setNS58Observation(version: session?.installedVersion, label: session?.label,
+            physicalModelConfirmed: session != nil && modelConfirmedRegistryID == session?.accessory.registryID)
     }
     func accessoryEvent(_ accessory: AAUSBAccessory, connected: Bool,
         sequence: UInt64, sourceTime: TimeInterval) {
@@ -409,9 +422,20 @@ private final class App: NSObject, NSApplicationDelegate {
                                 throw NS58Error.invalid("Unexpected NS58 SCSI capacity")
                             }
                             let baseline = try transport.readBlocks(atLBA: 0, count: 23)
-                            let inspection = try NS58FAT12.inspectBaseline(baseline)
+                            let observation = try NS58VersionProbe.inspect(baseline)
+                            let installationBlockReason: String?
+                            do {
+                                _ = try NS58FAT12.inspectBaseline(baseline)
+                                installationBlockReason = nil
+                            } catch {
+                                // Successfully reading an older/unrecognized
+                                // label is not a USB transport failure. Keep
+                                // the existing writer strictly unavailable.
+                                installationBlockReason = String(describing: error)
+                            }
                             return OpenSession(accessory: accessory, device: device, transport: transport,
-                                baseline: baseline, label: inspection.volumeLabel, serial: serial,
+                                baseline: baseline, label: observation.volumeLabel, installedVersion: observation.version,
+                                installationBlockReason: installationBlockReason, serial: serial,
                                 attachmentGeneration: generation, deviceTraceID: deviceTraceID)
                         } catch { transport.close(); throw error }
                     }.value
@@ -421,8 +445,13 @@ private final class App: NSObject, NSApplicationDelegate {
                     }
                     session = opened
                     writingRegistryID = nil
-                    status.stringValue = "USB/FAT inspection passed · \(opened.label). Verify the physical NS58 label before installation."
-                    log("USB CLAIM + BOT READ PASS: 119 × 4096 bytes; FAT label \(opened.label).")
+                    status.stringValue = opened.installedVersion == nil
+                        ? "Volume label read · \(opened.label). Installed version is unknown; Install remains disabled."
+                        : "Read-only version inspection passed · \(opened.label). Installation eligibility is checked separately."
+                    log("USB CLAIM + BOT READ PASS: 119 × 4096 bytes; FAT label \(opened.label); strict installation baseline=\(opened.installationBlockReason == nil).")
+                    if let reason = opened.installationBlockReason {
+                        log("Read-only observation retained; Install remains disabled: \(reason). This is not classified as a transport failure.")
+                    }
                     usbOperation = nil; operationRegistryID = nil; busy = false; refreshButtons()
                 } catch {
                     do {
@@ -511,6 +540,7 @@ private final class App: NSObject, NSApplicationDelegate {
         guard let opened = session, let url = firmwareURL,
               safety.canInstall(registryID: opened.accessory.registryID, busy: busy, hasClaim: true,
                 hasFirmware: true, modelConfirmed: modelConfirmedRegistryID == opened.accessory.registryID,
+                baselineValidated: opened.installationBlockReason == nil,
                 previouslyWrote: writingRegistryID == opened.accessory.registryID,
                 candidateCount: accessories.count) else { return }
         let alert = NSAlert()
@@ -521,6 +551,7 @@ private final class App: NSObject, NSApplicationDelegate {
         guard session?.accessory.registryID == opened.accessory.registryID,
               safety.canInstall(registryID: opened.accessory.registryID, busy: busy, hasClaim: true,
                 hasFirmware: firmwareURL == url, modelConfirmed: modelConfirmedRegistryID == opened.accessory.registryID,
+                baselineValidated: opened.installationBlockReason == nil,
                 previouslyWrote: writingRegistryID == opened.accessory.registryID,
                 candidateCount: accessories.count),
               attachments.isCurrent(registryID: opened.accessory.registryID,
