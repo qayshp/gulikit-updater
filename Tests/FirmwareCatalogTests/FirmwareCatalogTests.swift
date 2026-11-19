@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import FirmwareCatalog
+@testable import FirmwareCatalog
 
 private actor FetchCounter {
     private var calls = 0
@@ -41,6 +41,37 @@ struct FirmwareCatalogTests {
     @Test func separatesKK3ModelsOnSharedPage() throws {
         #expect(try FirmwareCatalogParser.parse(kk3HTML, for: entry("ns39-main")).rawValue == "5.9")
         #expect(try FirmwareCatalogParser.parse(kk3HTML, for: entry("ns38-main")).rawValue == "5.8")
+    }
+
+    @Test func resolvesAcceleratedArticleAndStillSeparatesModels() async throws {
+        let page = try entry("ns39-main").officialPage
+        let asset = try #require(URL(string: "https://img.website.xin/pubsf/18023/18023503/cdn-static-pages/newsinfo/pc/887152_en-us.nocookie.html.Body.js?version=20261116171917"))
+        let other = try #require(URL(string: "https://img.website.xin/other.js"))
+        let counter = FetchCounter()
+        let html = try await FirmwareCatalogService.resolveOfficialPage(page) { resource in
+            await counter.increment()
+            switch resource {
+            case .page(let url):
+                #expect(url == page)
+                return Data("<html><body id='smart-body'><script src='\(asset.absoluteString)'></script></body></html>".utf8)
+            case .body(let url, let owner):
+                #expect(url == asset && owner == page && resource.allows(url))
+                #expect(!resource.allows(other))
+                return Data(#"document.write('\u003cdiv class=\"w-detail\"\u003e<p>KK3 Max NS39 V5.10 Firmware:</p><p>KK3 Max NS39 / KK3 Pro NS38 V5.8 Firmware:</p></div>');"#.utf8)
+            }
+        }
+        #expect(await counter.count() == 2)
+        #expect(try FirmwareCatalogParser.parse(html, for: entry("ns39-main")).rawValue == "5.10")
+        #expect(try FirmwareCatalogParser.parse(html, for: entry("ns38-main")).rawValue == "5.8")
+    }
+
+    @Test func leavesOrdinaryHTMLUntouched() async throws {
+        let page = try entry("ns58-main").officialPage
+        let fetched = try await FirmwareCatalogService.resolveOfficialPage(page) { resource in
+            #expect(resource.url == page)
+            return ns58HTML
+        }
+        #expect(fetched == ns58HTML)
     }
 
     @Test func selectsActiveHeadingAndIgnoresScriptAndOtherComponents() throws {

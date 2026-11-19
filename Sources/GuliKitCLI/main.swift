@@ -165,7 +165,7 @@ enum GuliKitCLI {
         gulikit plan --image /path/to/baseline.img --firmware /path/to/NS58_Elves2_V3.7.bin
         gulikit releases [--refresh] [--json]
 
-        releases is offline by default; --refresh requests official HTML pages only.
+        releases is offline by default; --refresh reads official release metadata only.
         Announced versions are advisory and do not change install eligibility or hashes.
         USB access and updating are provided by the GuliKitUpdater app.
         """)

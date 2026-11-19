@@ -82,7 +82,8 @@ useful offline, but is not proof of today's latest release. `swift run` may
 still need the project's ordinary build dependencies if they are not cached;
 the compiled `gulikit releases` executable itself requires no network access.
 
-An explicit refresh requests bounded official HTML pages:
+An explicit refresh requests bounded official release pages and, if needed,
+the public article-body resource they advertise:
 
 ```sh
 swift run gulikit releases --refresh
@@ -95,6 +96,19 @@ sequentially, and performs no automatic HTTP retry. The service's failure
 handling and backoff still apply. A new CLI process uses an in-memory service,
 so repeated CLI invocations are not a substitute for respecting a site's
 rate limit; do not run this command in a tight loop.
+
+### GuliKit's accelerated article pages
+
+GuliKit can return HTTP 200 with a small HTML page containing the title but
+not the article. Chrome renders the detail body from a versioned
+`*.html.Body.js` resource hosted on the site's CDN. The checker follows that
+reference only for a recognized shell and only when the HTTPS host, vendor
+site path, and article ID match the specific official release page. It decodes
+the single HTML string in the `document.write` wrapper without executing any
+JavaScript, then applies the same model-specific heading checks as for plain
+HTML. It does not load head scripts or follow other links, and it keeps the
+same response-size limits and failure backoff. A blocked response, unexpected
+resource, or changed wrapper is a failed check, not current advice.
 
 ## Source, timestamps, cache, and failures
 
@@ -193,3 +207,20 @@ compatibility, and hardware-verification requirements.
   showed bundled data with no successful live check. The metadata checker,
   firmware pins, and controller logic were not changed; no firmware was
   downloaded and no controller was tested.
+
+## Live metadata validation — November 19, 2026
+
+- The old client's ordinary request received HTTP 200 and a 1,365-byte
+  accelerated page for NS58, with a title but no model-specific release
+  heading. The shell pointed to GuliKit's public CDN body asset. That asset
+  contained the article HTML as a single escaped string.
+- The rebuilt signed app refreshed all four records at 00:08 Pacific.
+  The launch log recorded live results for NS58 (3.7), NS59 (5.8),
+  NS39 (5.9), and NS38 (5.8) with zero failed records. The catalog showed
+  fresh results and successful website-check timestamps; the app's cache
+  contained all four observations with no outstanding failures.
+- Offline catalog tests cover both ordinary HTML and the accelerated
+  body format, strict CDN URL matching, rejection of unexpected wrappers,
+  size limits, and the shared KK3 page's two distinct model releases.
+  The build does not execute site scripts, solve challenges, download
+  firmware, or change installer support.

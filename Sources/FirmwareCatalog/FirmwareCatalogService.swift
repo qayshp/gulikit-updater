@@ -180,15 +180,30 @@ public actor FirmwareCatalogService {
             && FirmwareCatalog.entries.contains(where: { $0.officialPage.path == url.path })
     }
     private static func fetchOfficialPage(_ url: URL) async throws -> Data {
+        try await resolveOfficialPage(url, fetch: fetch)
+    }
+
+    static func resolveOfficialPage(_ url: URL, fetch: (OfficialReleaseResource) async throws -> Data) async throws -> Data {
         guard isAllowedPageURL(url) else { throw FirmwareCatalogError.invalid("Unrecognized official firmware URL") }
+        let html = try await fetch(.page(url))
+        // The vendor also serves a small acceleration shell. Its public body
+        // script contains the article as one escaped HTML string. Read only
+        // that same article's allowlisted resource, never run a script.
+        guard let bodyURL = try OfficialReleaseBody.resourceURL(in: html, for: url) else { return html }
+        let body = try await fetch(.body(bodyURL, page: url))
+        return try OfficialReleaseBody.decode(body)
+    }
+
+    private static func fetch(_ resource: OfficialReleaseResource) async throws -> Data {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
         configuration.urlCache = nil
         configuration.timeoutIntervalForRequest = 15
         configuration.timeoutIntervalForResource = 25
-        let session = URLSession(configuration: configuration, delegate: OfficialPagePolicy(), delegateQueue: nil)
+        let session = URLSession(configuration: configuration, delegate: OfficialPagePolicy(resource: resource), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: resource.url)
         request.setValue("GuliKitUpdater/0.1 (firmware release check)", forHTTPHeaderField: "User-Agent")
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -197,9 +212,9 @@ public actor FirmwareCatalogService {
         guard (200..<300).contains(http.statusCode) else {
             throw FirmwareCatalogError.invalid("Official firmware page returned HTTP \(http.statusCode); browser verification or a later check may be needed")
         }
-        guard let finalURL = http.url, isAllowedPageURL(finalURL), finalURL.path == url.path,
-              ["text/html", "application/xhtml+xml"].contains(http.mimeType ?? "") else {
-            throw FirmwareCatalogError.invalid("Official firmware page did not return an allowed HTML success response")
+        guard let finalURL = http.url, resource.allows(finalURL),
+              resource.mimeTypes.contains(http.mimeType ?? "") else {
+            throw FirmwareCatalogError.invalid("Official firmware resource returned an unexpected URL or content type")
         }
         guard response.expectedContentLength <= Int64(FirmwareCatalogParser.maxPageBytes) else {
             throw FirmwareCatalogError.invalid("Official firmware page exceeds the size limit")
@@ -215,13 +230,42 @@ public actor FirmwareCatalogService {
     }
 }
 
+enum OfficialReleaseResource: Sendable {
+    case page(URL)
+    case body(URL, page: URL)
+
+    var url: URL {
+        switch self {
+        case .page(let url), .body(let url, _): url
+        }
+    }
+    var mimeTypes: [String] {
+        switch self {
+        case .page: ["text/html", "application/xhtml+xml"]
+        case .body: ["application/javascript", "text/javascript"]
+        }
+    }
+    func allows(_ candidate: URL) -> Bool {
+        switch self {
+        case .page(let url):
+            FirmwareCatalogService.isAllowedPageURL(candidate) && candidate.path == url.path
+        case .body(let url, let page):
+            candidate == url && OfficialReleaseBody.isAllowedResourceURL(candidate, for: page)
+        }
+    }
+}
+
 private final class OfficialPagePolicy: NSObject, URLSessionTaskDelegate {
+    private let resource: OfficialReleaseResource
+    init(resource: OfficialReleaseResource) { self.resource = resource }
+
     func urlSession(_ session: URLSession, task: URLSessionTask,
         willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
         completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
-        let allowed = request.url.map { url in
-            FirmwareCatalogService.isAllowedPageURL(url) && url.path == task.originalRequest?.url?.path
-        } ?? false
+        // Refuse all redirects for the exact pinned CDN resource.
+        let allowed: Bool
+        if case .page = resource { allowed = request.url.map(resource.allows) ?? false }
+        else { allowed = false }
         completionHandler(allowed ? request : nil)
     }
 }
