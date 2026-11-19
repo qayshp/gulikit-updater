@@ -30,7 +30,7 @@ final class FirmwareCatalogWindowController: NSWindowController {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    override func loadWindow() {
+    private func createWindow() {
         let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 610),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         panel.title = "Firmware Versions & Official Downloads"
@@ -79,14 +79,17 @@ final class FirmwareCatalogWindowController: NSWindowController {
     }
 
     func present() {
-        showWindow(nil); window?.makeKeyAndOrderFront(nil)
+        // init(window: nil) has no nib to load, so showWindow does not
+        // construct this programmatic window. Reuse it after closing.
+        if window == nil { createWindow() }
+        window?.makeKeyAndOrderFront(nil)
         refreshAll(force: false) // Cache/backoff applies when reopened days later.
     }
 
     func setNS58Observation(version: String?, label: String?, physicalModelConfirmed: Bool) {
         installedVersion = version; installedLabel = label
         self.physicalModelConfirmed = physicalModelConfirmed
-        if isWindowLoaded { refresh() }
+        if window != nil { refresh() }
     }
 
     func startAutomaticCheck() {
@@ -106,14 +109,14 @@ final class FirmwareCatalogWindowController: NSWindowController {
         guard let entry = selection else { return }
         // Only a bundled, reviewed official-page URL may reach the browser.
         if NSWorkspace.shared.open(entry.officialPage) {
-            report("Opened official firmware page for \(entry.id). Browser handles package download/CAPTCHA; no controller operation.")
+            report("Opened official firmware page for \(entry.id): \(entry.officialPage.absoluteString). Browser handles package download/CAPTCHA; no controller operation.")
         } else { report("Could not open official firmware page for \(entry.id).") }
     }
 
     private func refreshAll(force: Bool) {
         guard !checking else { return }
         checking = true
-        if isWindowLoaded { refresh() }
+        if window != nil { refresh() }
         report("Official release metadata check START; \(FirmwareCatalog.entries.count) model/component records. No payload download or USB operation.")
         Task {
             // Sequential and bounded; entries sharing a page are coalesced by
@@ -121,18 +124,18 @@ final class FirmwareCatalogWindowController: NSWindowController {
             for entry in FirmwareCatalog.entries {
                 results[entry.id] = await service.cachedCheck(entry: entry, now: Date())
             }
-            if isWindowLoaded { refresh() }
+            if window != nil { refresh() }
             var failures = 0
             for entry in FirmwareCatalog.entries {
                 let result = await service.check(entry: entry, force: force, now: Date())
                 results[entry.id] = result
                 if result.failure != nil { failures += 1 }
                 report("Release metadata \(entry.id): \(result.status), version=\(result.latestVersion?.rawValue ?? "unknown"), source=\(result.source).")
-                if isWindowLoaded { refresh() }
+                if window != nil { refresh() }
             }
             checking = false
             report("Official release metadata check END; unavailable/failed records=\(failures). Cached/bundled observations remain labeled; installation policy unchanged.")
-            if isWindowLoaded { refresh() }
+            if window != nil { refresh() }
         }
     }
 

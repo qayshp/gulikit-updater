@@ -176,3 +176,20 @@ compatibility, and hardware-verification requirements.
   USBTransport implementation, and two write commands were left unchanged.
   No firmware payload was downloaded, no controller was claimed or reset, and
   no firmware write or flash-drive comparison was performed.
+
+## Catalog window and browser validation — November 19, 2026
+
+- The original signed build's catalog button ran the background check but did
+  not show a window. Its programmatic controller used `NSWindowController(window: nil)`,
+  so `showWindow` had no nib or window to load. The repaired controller creates
+  the window on first presentation, then reuses it.
+- In the rebuilt signed app, the button opened the catalog and the model picker
+  showed all four entries. **Open Official Firmware Page** was exercised
+  separately for NS58, NS59, NS39, and NS38. Chrome loaded the expected release
+  page each time: `1071651.html`, `1050198.html`, `887152.html`, and
+  `887152.html`, respectively. The shared page's body distinguishes Max V5.9
+  from the V5.8 release listed for Pro.
+- Browser page loading is not an automatic metadata refresh. The app still
+  showed bundled data with no successful live check. The metadata checker,
+  firmware pins, and controller logic were not changed; no firmware was
+  downloaded and no controller was tested.
