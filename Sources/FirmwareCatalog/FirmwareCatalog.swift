@@ -99,11 +99,15 @@ public struct FirmwareCatalogCheck: Codable, Sendable {
     public let status: FirmwareCatalogStatus
     public let failure: String?
     public let lastAttemptAt: Date?
+    /// An otherwise valid article reading did not cover every first-page
+    /// candidate. Its version is advisory, not evidence of being up to date.
+    public let discoveryWarning: String?
 
     /// Fresh here means a successful official-page observation within 24 hours.
     /// A failed refresh or bundled-only record never produces "up to date".
     public var allowsCurrentComparison: Bool {
-        status == .fresh && source != .bundled && failure == nil && checkedAt != nil && latestVersion != nil
+        status == .fresh && source != .bundled && failure == nil && discoveryWarning == nil
+            && checkedAt != nil && latestVersion != nil
     }
     /// Re-evaluate time when displaying a retained result. A result can outlive
     /// the window/check that originally assigned its `.fresh` status.
@@ -172,7 +176,7 @@ public enum FirmwareCatalogParser {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return string }
         return regex.stringByReplacingMatches(in: string, range: NSRange(string.startIndex..., in: string), withTemplate: replacement)
     }
-    private static func decodeEntities(_ string: String) -> String {
+    static func decodeEntities(_ string: String) -> String {
         var result = string
         for (entity, value) in ["&nbsp;": " ", "&amp;": "&", "&quot;": "\"", "&apos;": "'", "&lt;": "<", "&gt;": ">"] {
             result = result.replacingOccurrences(of: entity, with: value)

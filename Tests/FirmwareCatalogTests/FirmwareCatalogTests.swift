@@ -249,7 +249,10 @@ struct FirmwareCatalogTests {
         _ = await service.check(entry: model, now: now)
         let loaded = FirmwareCatalogService(cacheURL: url)
         let cached = await loaded.cachedCheck(entry: model, now: now.addingTimeInterval(30))
-        #expect(cached.source == .cache && cached.allowsCurrentComparison)
+        #expect(cached.source == .cache)
+        // This observation predates discovery (the fixture injected only an
+        // article fetcher). Retain it but don't claim first-page coverage.
+        #expect(cached.discoveryWarning != nil && !cached.allowsCurrentComparison)
         #expect(cached.latestVersion?.rawValue == "3.7")
         var object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         var records = try #require(object["records"] as? [String: [String: Any]])

@@ -25,12 +25,12 @@ enum GuliKitCLI {
             printUsage()
         case "verify":
             guard arguments.count == 2 else {
-                throw NS58Error.invalid("usage: gulikit verify /path/to/NS58_Elves2_V3.7.bin")
+                throw NS58Error.invalid("usage: gulikit verify /path/to/NS58_V3.7.zip-or-bin")
             }
-            let url = try regularFile(arguments[1])
-            let firmware = try Data(contentsOf: url)
-            try NS58FAT12.verifyFirmware(firmware, filename: url.lastPathComponent)
-            print("Firmware: \(url.lastPathComponent)")
+            let url = URL(fileURLWithPath: arguments[1]).standardizedFileURL
+            let firmware = try SupportedFirmware.importFirmware(from: url)
+            print("Source: \(url.lastPathComponent)")
+            print("Verified BIN: \(NS58Constants.firmwareName)")
             print("Size: \(firmware.count) bytes")
             print("SHA-256: \(NS58FAT12.sha256(firmware))")
             print("Verified NS58 Elves 2 V3.7 firmware")
@@ -145,6 +145,7 @@ enum GuliKitCLI {
                 print("  Checked at: \(record.checkedAt.map { formatter.string(from: $0) } ?? "not live-checked")")
                 print("  Bundled snapshot reviewed: \(formatter.string(from: record.bundledReviewedAt))")
                 if let failure = record.failure { print("  Refresh unavailable: \(failure)") }
+                if let warning = record.discoveryWarning { print("  Listing coverage: \(warning)") }
                 if !record.allowsCurrentComparison { print("  Current/latest comparison unavailable; this value is advisory only.") }
             }
             print("\nAnnounced versions do not authorize an installation or change pinned firmware hashes.")
@@ -160,7 +161,7 @@ enum GuliKitCLI {
         print("""
         GuliKit firmware tools and release-page advisories
 
-        gulikit verify /path/to/NS58_Elves2_V3.7.bin
+        gulikit verify /path/to/firmware.zip-or-bin
         gulikit download --directory /existing/output/directory
         gulikit plan --image /path/to/baseline.img --firmware /path/to/NS58_Elves2_V3.7.bin
         gulikit releases [--refresh] [--json]
@@ -185,6 +186,7 @@ private struct ReleaseRecord: Encodable {
     let status: String
     let source: String
     let failure: String?
+    let discoveryWarning: String?
     let allowsCurrentComparison: Bool
 
     init(entry: FirmwareCatalogEntry, check: FirmwareCatalogCheck) {
@@ -200,12 +202,13 @@ private struct ReleaseRecord: Encodable {
         status = check.status.rawValue
         source = check.source.rawValue
         failure = check.failure
+        discoveryWarning = check.discoveryWarning
         allowsCurrentComparison = check.allowsCurrentComparison
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, displayName, modelCodes, componentLabel, version, bundledVersion
-        case sourceURL, checkedAt, bundledReviewedAt, status, source, failure, allowsCurrentComparison
+        case sourceURL, checkedAt, bundledReviewedAt, status, source, failure, discoveryWarning, allowsCurrentComparison
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -225,6 +228,8 @@ private struct ReleaseRecord: Encodable {
         try values.encode(source, forKey: .source)
         if let failure { try values.encode(failure, forKey: .failure) }
         else { try values.encodeNil(forKey: .failure) }
+        if let discoveryWarning { try values.encode(discoveryWarning, forKey: .discoveryWarning) }
+        else { try values.encodeNil(forKey: .discoveryWarning) }
         try values.encode(allowsCurrentComparison, forKey: .allowsCurrentComparison)
     }
 }

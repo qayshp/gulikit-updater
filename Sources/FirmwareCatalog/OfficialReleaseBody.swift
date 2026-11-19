@@ -8,7 +8,7 @@ enum OfficialReleaseBody {
     private static let maxBytes = FirmwareCatalogParser.maxPageBytes
 
     static func isAllowedResourceURL(_ url: URL, for page: URL) -> Bool {
-        guard FirmwareCatalogService.isAllowedPageURL(page),
+        guard FirmwareCatalogService.isOfficialArticleURL(page),
               let pageID = pageID(for: page), let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
               parts.scheme == "https", parts.host == host,
               parts.port == nil || parts.port == 443,
@@ -22,7 +22,7 @@ enum OfficialReleaseBody {
     /// Returns nil for a normal page without this wrapper. A wrapper-looking
     /// page with an ambiguous or unapproved resource fails closed.
     static func resourceURL(in data: Data, for page: URL) throws -> URL? {
-        guard FirmwareCatalogService.isAllowedPageURL(page), !data.isEmpty,
+        guard FirmwareCatalogService.isOfficialArticleURL(page), !data.isEmpty,
               data.count <= maxBytes, let html = String(data: data, encoding: .utf8) else {
             throw invalid("Invalid official firmware shell or page URL")
         }

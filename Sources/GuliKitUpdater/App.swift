@@ -7,9 +7,18 @@ import NS58Core
 import FirmwareDownload
 import OSLog
 import Darwin
+import UniformTypeIdentifiers
 
 private let logger = Logger(subsystem: "com.qayshp.GuliKitUpdater", category: "updater")
 private let accessoryLogger = Logger(subsystem: "com.qayshp.GuliKitUpdater", category: "accessory-events")
+
+/// One verified, in-memory payload. The original ZIP/BIN is not reopened at
+/// install time, and the app does not need persistent access to that file.
+private struct SelectedFirmware {
+    let id = UUID()
+    let bytes: Data
+    let sourceName: String
+}
 
 private struct OpenSession: @unchecked Sendable {
     let accessory: AAUSBAccessory
@@ -65,7 +74,7 @@ private final class App: NSObject, NSApplicationDelegate {
     private let bootSessionID = App.readBootSessionID()
     private static let recoveryInstructions = "Press the rear OFF button, then hold Setting and press Home (the cable may stay connected). Select Use with this Mac and wait for its drive, then attach it to GuliKit Updater. A new USB instance is required; repeated Connect/Reset clicks will not retry this one."
     private var session: OpenSession?
-    private var firmwareURL: URL?
+    private var selectedFirmware: SelectedFirmware?
     private var inspectionFailure: String?
     private var busy = false
     private var writingRegistryID: UInt64?
@@ -85,7 +94,7 @@ private final class App: NSObject, NSApplicationDelegate {
     private let copyLogButton = NSButton(title: "Copy Log", target: nil, action: nil)
     private let inspectButton = NSButton(title: "Connect & Inspect", target: nil, action: nil)
     private let resetInspectButton = NSButton(title: "Reset Transport & Inspect…", target: nil, action: nil)
-    private let fileButton = NSButton(title: "Choose Firmware…", target: nil, action: nil)
+    private let fileButton = NSButton(title: "Import ZIP or BIN…", target: nil, action: nil)
     private let downloadButton = NSButton(title: "Download V3.7", target: nil, action: nil)
     private let updateButton = NSButton(title: "Install V3.7", target: nil, action: nil)
     private let releaseButton = NSButton(title: "Release Controller", target: nil, action: nil)
@@ -262,7 +271,7 @@ private final class App: NSObject, NSApplicationDelegate {
         downloadButton.isEnabled = !busy
         updateButton.isEnabled = session.map {
             safety.canInstall(registryID: $0.accessory.registryID, busy: busy, hasClaim: true,
-                hasFirmware: firmwareURL != nil, modelConfirmed: modelConfirmedRegistryID == $0.accessory.registryID,
+                hasFirmware: selectedFirmware != nil, modelConfirmed: modelConfirmedRegistryID == $0.accessory.registryID,
                 baselineValidated: $0.installationBlockReason == nil,
                 previouslyWrote: writingRegistryID == $0.accessory.registryID, candidateCount: accessories.count)
         } ?? false
@@ -280,10 +289,10 @@ private final class App: NSObject, NSApplicationDelegate {
             controllerStatus.stringValue = "Controller: \(accessories.count) GuliKit updater candidate(s). USB matching alone does not identify the model."
         }
         if session == nil { identityStatus.stringValue = "NS58-only experiment. USB/FAT profile checks and firmware hash are required, but do not independently prove the controller model." }
-        if let firmwareURL {
-            firmwareStatus.stringValue = "Firmware selected and verified: \(firmwareURL.lastPathComponent)\n\(firmwareURL.path)"
+        if let selectedFirmware {
+            firmwareStatus.stringValue = "Verified NS58 V3.7 firmware · imported from \(selectedFirmware.sourceName)"
         } else {
-            firmwareStatus.stringValue = "Firmware: none selected. Open the official page in Firmware Versions, download/extract in your browser, then choose the verified V3.7 BIN. The mirror is optional and third-party."
+            firmwareStatus.stringValue = "Firmware: none selected. Open the official page in Firmware Versions, download in your browser, then import the NS58 V3.7 ZIP or BIN. The mirror is optional and third-party."
         }
         if busy {
             readinessStatus.stringValue = "Operation in progress. Installation controls are locked."
@@ -297,8 +306,8 @@ private final class App: NSObject, NSApplicationDelegate {
             readinessStatus.stringValue = "The volume label was read, but installation is not validated for this baseline: \(reason) No write or automatic retry is permitted."
         } else if modelConfirmedRegistryID != session?.accessory.registryID {
             readinessStatus.stringValue = "Install unavailable: check the physical NS58 model label and tick its confirmation. USB identity and GuliKit 3.7 alone are not a model guarantee."
-        } else if firmwareURL == nil {
-            readinessStatus.stringValue = "Controller ready. Download V3.7 or choose the supported BIN to enable Install."
+        } else if selectedFirmware == nil {
+            readinessStatus.stringValue = "Controller ready. Import the supported NS58 V3.7 ZIP or BIN to enable Install."
         } else {
             readinessStatus.stringValue = "Ready for a V3.7 reinstall. Install opens a confirmation before any firmware write."
         }
@@ -470,18 +479,32 @@ private final class App: NSObject, NSApplicationDelegate {
     @objc func chooseFirmware() {
         guard !busy else { return }
         busy = true; refreshButtons()
-        defer { busy = false; refreshButtons() }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        panel.message = "Select the extracted official NS58_Elves2_V3.7.bin"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let access = url.startAccessingSecurityScopedResource()
-            defer { if access { url.stopAccessingSecurityScopedResource() } }
-            try NS58FAT12.verifyFirmware(Data(contentsOf: url), filename: url.lastPathComponent)
-            firmwareURL = url; log("Firmware verified: \(url.lastPathComponent), SHA-256 matches known V3.7.")
-            refreshButtons()
-        } catch { fail(error) }
+        // BIN files can have a dynamic UTType on macOS. The importer, not
+        // Finder's inferred type, validates the extension and contents.
+        if let bin = UTType(filenameExtension: "bin") { panel.allowedContentTypes = [.zip, bin] }
+        panel.message = "Select the official Elves 2 (NS58) V3.7 ZIP or its extracted BIN. Import does not write to the controller."
+        panel.prompt = "Import"
+        guard panel.runModal() == .OK, let url = panel.url else {
+            busy = false; refreshButtons(); return
+        }
+        selectedFirmware = nil
+        status.stringValue = "Verifying the selected firmware file…"
+        refreshButtons()
+        Task {
+            do {
+                let bytes = try await Task.detached {
+                    let access = url.startAccessingSecurityScopedResource()
+                    defer { if access { url.stopAccessingSecurityScopedResource() } }
+                    return try SupportedFirmware.importFirmware(from: url)
+                }.value
+                selectedFirmware = SelectedFirmware(bytes: bytes, sourceName: url.lastPathComponent)
+                status.stringValue = "NS58 V3.7 firmware verified and staged in memory. No device operation."
+                log("Local import verified: SHA-256 matches the supported NS58 V3.7 BIN.")
+                busy = false; refreshButtons()
+            } catch { fail(error) }
+        }
     }
     @objc func downloadFirmware() {
         guard !busy else { return }
@@ -495,13 +518,14 @@ private final class App: NSObject, NSApplicationDelegate {
                 let directory = caches.appendingPathComponent("NS58-V3.7", isDirectory: true)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 let cached = directory.appendingPathComponent(NS58Constants.firmwareName)
+                let firmware: Data
                 if FileManager.default.fileExists(atPath: cached.path) {
-                    try NS58FAT12.verifyFirmware(Data(contentsOf: cached), filename: cached.lastPathComponent)
-                    firmwareURL = cached
+                    firmware = try SupportedFirmware.importFirmware(from: cached)
                 } else {
-                    let firmware = try await SupportedFirmware.download()
-                    firmwareURL = try SupportedFirmware.saveVerified(firmware, in: directory)
+                    firmware = try await SupportedFirmware.download()
+                    _ = try SupportedFirmware.saveVerified(firmware, in: directory)
                 }
+                selectedFirmware = SelectedFirmware(bytes: firmware, sourceName: "verified mirror V3.7")
                 log("Supported V3.7 BIN verified and selected. Inspect the controller and confirm its physical NS58 label before Install.")
                 status.stringValue = "NS58 V3.7 downloaded and verified."
                 busy = false; refreshButtons()
@@ -537,7 +561,7 @@ private final class App: NSObject, NSApplicationDelegate {
         }
     }
     @objc func update() {
-        guard let opened = session, let url = firmwareURL,
+        guard let opened = session, let selection = selectedFirmware,
               safety.canInstall(registryID: opened.accessory.registryID, busy: busy, hasClaim: true,
                 hasFirmware: true, modelConfirmed: modelConfirmedRegistryID == opened.accessory.registryID,
                 baselineValidated: opened.installationBlockReason == nil,
@@ -550,7 +574,7 @@ private final class App: NSObject, NSApplicationDelegate {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         guard session?.accessory.registryID == opened.accessory.registryID,
               safety.canInstall(registryID: opened.accessory.registryID, busy: busy, hasClaim: true,
-                hasFirmware: firmwareURL == url, modelConfirmed: modelConfirmedRegistryID == opened.accessory.registryID,
+                hasFirmware: selectedFirmware?.id == selection.id, modelConfirmed: modelConfirmedRegistryID == opened.accessory.registryID,
                 baselineValidated: opened.installationBlockReason == nil,
                 previouslyWrote: writingRegistryID == opened.accessory.registryID,
                 candidateCount: accessories.count),
@@ -560,10 +584,8 @@ private final class App: NSObject, NSApplicationDelegate {
             return
         }
         do {
-            let access = url.startAccessingSecurityScopedResource()
-            defer { if access { url.stopAccessingSecurityScopedResource() } }
-            let firmware = try Data(contentsOf: url)
-            try NS58FAT12.verifyFirmware(firmware, filename: url.lastPathComponent)
+            let firmware = selection.bytes
+            try NS58FAT12.verifyFirmware(firmware, filename: NS58Constants.firmwareName)
             busy = true; usbOperation = .installation; writingRegistryID = opened.accessory.registryID
             operationRegistryID = opened.accessory.registryID
             requireFreshSession(opened.accessory.registryID, reason: .updateAttempted)
@@ -575,7 +597,7 @@ private final class App: NSObject, NSApplicationDelegate {
                         // Re-read under the same exclusive claim immediately before writing.
                         let baseline = try opened.transport.readBlocks(atLBA: 0, count: 23)
                         let plan = try NS58FAT12.makeUpdatePlan(baseline: baseline,
-                            firmware: firmware, firmwareFilename: url.lastPathComponent)
+                            firmware: firmware, firmwareFilename: NS58Constants.firmwareName)
                         try opened.transport.writeBlocks(atLBA: 10, data: plan.firmwarePayload)
                         try opened.transport.writeBlocks(atLBA: 1, data: plan.metadataPayload)
                     }.value

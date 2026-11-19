@@ -205,11 +205,10 @@ preparing it does not start a Claim/Close/Reopen cycle.
    USB and can temporarily remove the mounted volume from Finder. A failed
    inspection keeps Install disabled and leaves its error visible.
 4. Open **Firmware Versions & Official Downloads…**, choose the NS58 official
-   firmware page, download/extract in the browser, then click **Choose Firmware**
-   and select the extracted official
-   `NS58_Elves2_V3.7.bin`. Its size and SHA-256 must match the known release.
-   Download automatically selects the verified BIN; a second file selection
-   is unnecessary. The window shows its full path and the installation blocker.
+   firmware page, and download V3.7 in the browser. Click **Import ZIP or BIN…**
+   and select the package or the extracted `NS58_Elves2_V3.7.bin`.
+   The app verifies and holds only the pinned BIN bytes in memory. Importing
+   does not perform a USB operation.
 5. Check the controller's physical model label and tick the **NS58 / Elves 2**
    confirmation. The checkbox is cleared on attachment/session changes; a
    matching USB/FAT profile alone is not a model guarantee. Click **Install
@@ -261,7 +260,7 @@ phase-by-phase evidence and limits.
 ## Offline CLI
 
 ```sh
-.build/debug/gulikit verify /path/to/NS58_Elves2_V3.7.bin
+.build/debug/gulikit verify /path/to/NS58_Elves2_V3.7.zip
 .build/debug/gulikit download --directory /existing/output/directory
 .build/debug/gulikit plan --image /path/to/baseline.img --firmware /path/to/NS58_Elves2_V3.7.bin
 swift test
@@ -282,9 +281,10 @@ NS58_TEST_LINUX_ROOT=/path/to/linux-root-final.bin swift test
 ### Official release information
 
 **Firmware Versions & Official Downloads…** opens an advisory catalog for main
-firmware on NS58, NS59, NS39, and NS38. It checks the model-specific official
-release pages at runtime, uses a 24-hour success cache and five-minute failure
-backoff, and retains a clearly dated bundled snapshot when checking fails.
+firmware on NS58, NS59, NS39, and NS38. It looks for main-firmware article links
+on the first page of GuliKit's official download list, checks the article bodies,
+and retains the known model pages as a fallback. It uses a 24-hour success
+cache and five-minute failure backoff, and labels incomplete listing checks.
 The NS39-only V5.9 heading on the shared KK3 page does not advance the NS38
 record. Bluetooth firmware is not compared in this initial catalog.
 
@@ -298,8 +298,9 @@ Selecting another catalog model does not identify or claim a USB controller,
 and does not add installation support for it.
 
 Use **Open Official Firmware Page** to download in the normal browser, including
-any CAPTCHA. Extract the package there and use **Choose Firmware…** for the
-known NS58 V3.7 BIN. The optional third-party action is explicitly labeled
+any CAPTCHA. Use **Import ZIP or BIN…** for the known NS58 V3.7 payload. A
+repacked ZIP is acceptable only if its single matching BIN still passes
+size, CRC, and the existing SHA-256 pin. The optional third-party action is labeled
 **Mirror V3.7 (optional)**; announcement checks never download firmware or
 change the pinned firmware hashes.
 
@@ -334,7 +335,7 @@ ZIP parsing uses the MIT-licensed
 [ZIPFoundation 0.9.20](https://github.com/weichsel/ZIPFoundation/releases/tag/0.9.20),
 pinned in both SwiftPM and Xcode lockfiles. Firmware itself is not committed.
 
-Eight additional tests cover download URL policy, archive rejection, hash
+Download and import tests cover URL policy, archive rejection, hash
 validation, fixed output naming, and preservation of existing files/symlinks.
 To include the pinned archive extraction test, also set:
 

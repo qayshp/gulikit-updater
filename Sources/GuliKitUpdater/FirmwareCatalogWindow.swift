@@ -107,10 +107,19 @@ final class FirmwareCatalogWindowController: NSWindowController {
 
     @objc private func openOfficialPage() {
         guard let entry = selection else { return }
-        // Only a bundled, reviewed official-page URL may reach the browser.
-        if NSWorkspace.shared.open(entry.officialPage) {
-            report("Opened official firmware page for \(entry.id): \(entry.officialPage.absoluteString). Browser handles package download/CAPTCHA; no controller operation.")
+        let page = officialPage(for: entry)
+        if NSWorkspace.shared.open(page) {
+            report("Opened official firmware page for \(entry.id): \(page.absoluteString). Browser handles package download/CAPTCHA; no controller operation.")
         } else { report("Could not open official firmware page for \(entry.id).") }
+    }
+
+    private func officialPage(for entry: FirmwareCatalogEntry) -> URL {
+        // Keep navigation within official article URLs, never the file link
+        // from inside an article or a source supplied by arbitrary input.
+        if let page = results[entry.id]?.sourceURL, FirmwareCatalogService.isOfficialArticleURL(page) {
+            return page
+        }
+        return entry.officialPage
     }
 
     private func refreshAll(force: Bool) {
@@ -126,15 +135,17 @@ final class FirmwareCatalogWindowController: NSWindowController {
             }
             if window != nil { refresh() }
             var failures = 0
+            var limited = 0
             for entry in FirmwareCatalog.entries {
                 let result = await service.check(entry: entry, force: force, now: Date())
                 results[entry.id] = result
                 if result.failure != nil { failures += 1 }
+                if result.discoveryWarning != nil { limited += 1 }
                 report("Release metadata \(entry.id): \(result.status), version=\(result.latestVersion?.rawValue ?? "unknown"), source=\(result.source).")
                 if window != nil { refresh() }
             }
             checking = false
-            report("Official release metadata check END; unavailable/failed records=\(failures). Cached/bundled observations remain labeled; installation policy unchanged.")
+            report("Official release metadata check END; unavailable/failed records=\(failures), limited listing coverage=\(limited). Installation policy unchanged.")
             if window != nil { refresh() }
         }
     }
@@ -147,7 +158,8 @@ final class FirmwareCatalogWindowController: NSWindowController {
         let current = results[entry.id]
         let now = Date()
         let observationStatus = current.map { result in
-            result.status == .fresh && !result.isCurrent(at: now) ? "stale" : result.status.rawValue
+            if result.status == .fresh, result.discoveryWarning != nil { return "limited coverage" }
+            return result.status == .fresh && !result.isCurrent(at: now) ? "stale" : result.status.rawValue
         } ?? "bundled"
         let latest = current?.latestVersion?.rawValue ?? entry.bundledVersion.rawValue
         let checked = current?.checkedAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "No successful live check"
@@ -161,7 +173,7 @@ final class FirmwareCatalogWindowController: NSWindowController {
             if physicalModelConfirmed, let current {
                 switch current.advice(installed: installedVersion, now: now) {
                 case .newerAvailable: lines.append("Status: Newer main firmware is listed for this model.")
-                case .upToDate: lines.append("Status: Up to date as of the last successful check.")
+                case .upToDate: lines.append("Status: Matches the newest main firmware found in the checked GuliKit listings.")
                 case .installedNewer: lines.append("Status: Installed version is newer than the listed release; no downgrade suggested.")
                 case .unknown: lines.append("Status: Cannot make a current comparison. Check the official page; cached data may be stale.")
                 }
@@ -173,7 +185,8 @@ final class FirmwareCatalogWindowController: NSWindowController {
             lines.append("Installed version: unknown. Selecting a catalog model does not identify or claim a USB device.")
         }
         if let failure = current?.failure { lines.append("Could not refresh: \(failure)") }
-        lines.append("Official page: \(entry.officialPage.absoluteString)")
+        if let warning = current?.discoveryWarning { lines.append("Listing coverage: \(warning)") }
+        lines.append("Official page: \(officialPage(for: entry).absoluteString)")
         lines.append(entry.id == "ns58-main"
             ? "Install support: verified V3.7 only, and only when the original strict write-baseline and physical-model checks pass."
             : "Install support: not validated in this app. Official information and links only.")

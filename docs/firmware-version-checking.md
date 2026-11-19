@@ -1,7 +1,7 @@
 # Firmware version advisories and catalog maintenance
 
 The release catalog answers a deliberately narrow question: **what main
-firmware version is announced on the selected official GuliKit release page?**
+firmware version is announced in the checked official GuliKit listings?**
 It does not discover attached models, infer compatibility, download firmware,
 change pinned package/BIN hashes, or authorize an installation.
 
@@ -49,11 +49,25 @@ Models Now** skips the success interval but not failed-attempt backoff. Visible
 advice is re-evaluated against the clock every minute and on presentation, so
 a retained result cannot stay current after its 24-hour window.
 
-**Open Official Firmware Page** opens only a bundled official URL in the normal
-browser. Complete any download verification there, extract the firmware, and
-use the main window's local BIN chooser. This change does not add ZIP import or
-automate firmware downloads. The existing mirror action is now explicitly
-labeled optional and third-party.
+**Open Official Firmware Page** opens either the verified official source
+article or the bundled model page in the normal browser. Complete any download
+verification there, then use **Import ZIP or BIN…** in the main window. The app
+reads a bounded, user-selected local file, extracts only the expected BIN in
+memory, and validates it against the existing V3.7 pin. It neither saves nor
+executes archive contents. The optional, third-party mirror retains its
+whole-archive and BIN pins.
+
+### Finding a release at a new URL
+
+The checker reads the first page of GuliKit's public download index and
+shares a recent response across model checks, alongside each model's known
+article. Main-firmware titles identify
+possible URLs, not firmware versions. An article must confirm the actual model
+and version in its body, and an older listing cannot replace a higher verified
+version. The checker limits requests and does not crawl historical pages or
+follow download links. If it cannot check the index or verify potential
+listings, it can still show known article information with a coverage warning
+but does not use that incomplete result for an “up to date” comparison.
 
 Read-only NS58 inspection keeps its existing device/transport/capacity gates,
 then reads the FAT12 root label separately from the strict writer validator.
@@ -133,7 +147,7 @@ The JSON output is an array with one record per entry. Each record includes:
 - `id`, `displayName`, `modelCodes`, and `componentLabel`;
 - `version` (nullable), `bundledVersion`, and the official `sourceURL`;
 - `checkedAt` (nullable) and `bundledReviewedAt`, encoded as ISO 8601;
-- `status`, `source`, `failure` (nullable), and `allowsCurrentComparison`.
+- `status`, `source`, `failure` and `discoveryWarning` (nullable), and `allowsCurrentComparison`.
 
 Nullable keys remain present as JSON `null`, so review tooling can distinguish
 missing current evidence from a successful check. After `--refresh`, the CLI
@@ -224,3 +238,19 @@ compatibility, and hardware-verification requirements.
   size limits, and the shared KK3 page's two distinct model releases.
   The build does not execute site scripts, solve challenges, download
   firmware, or change installer support.
+
+## ZIP import and article discovery validation — November 19, 2026
+
+- The signed app imported a repacked ZIP through the native picker, reported
+  that the expected NS58 V3.7 bytes were staged in memory, and kept Install
+  disabled with no controller. The test selection was cleared by relaunching
+  normally. The full offline suite passed all 145 tests with the local
+  original ZIP, verified BIN, and Linux capture fixtures enabled.
+- The signed app's live index and article check returned all four current
+  catalog entries with no failed or incomplete listings. The current site
+  links still pointed to the known articles. Offline tests with a different
+  article URL prove discovery, model-specific body validation and version
+  selection; they do not imply GuliKit has already posted a new version.
+- The supported payload pin, model/capacity/baseline restrictions, and
+  write sequence are unchanged. No controller testing or firmware download
+  was performed in this pass.
