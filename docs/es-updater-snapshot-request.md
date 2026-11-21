@@ -6,6 +6,8 @@ If you have the **ES, not the ES Pro or ES Max**, could you capture the first 64
 
 [macOS](#on-macos) · [Linux](#on-linux) · [Windows](#on-windows) · [What to share](#what-to-share)
 
+When you have your measurements, [submit an ES updater-drive report](https://github.com/qayshp/gulikit-updater/issues/new?template=es-updater-snapshot.yml). A GitHub account is needed to submit.
+
 ## Enter update mode without flashing
 
 Disconnect any other removable drives you can safely unplug. With the controller still disconnected, take the first disk listing in your OS section below. Then, with the controller off, connect it using a USB data cable. Hold **Setting** (the gear button), press **Home**, then release Setting. This is how [GuliKit documents entering update mode](https://www.gulikit.com/newsinfo/1076221.html). **Stop before the file-copy step** on that page. If your OS offers to initialize, format, or repair the disk, decline.
@@ -24,7 +26,7 @@ snapshot_dir=$(mktemp -d /tmp/gulikit-es.XXXXXX) &&
   wc -c "$snapshot_dir/es-updater-first-64KiB.img"
 ```
 
-The controller is the **input**. The output goes to a new temporary folder on your Mac, not onto the controller. The last line should show `65536` bytes and the file’s path. If it’s shorter or there’s an error, don’t upload it.
+The controller is the **input**. The output goes to a new temporary folder on your Mac, not onto the controller. The last line should show `65536` bytes and the file’s path. If it’s shorter or there’s an error, report the error without attaching a file.
 
 ## On Linux
 
@@ -74,6 +76,8 @@ Press the controller’s rear **OFF** button and unplug it.
 
 ## What to share
 
-Please reply with the **exact model on the controller’s label**, your OS, and the updater drive’s **displayed name, disk size in bytes, and logical block size** if available. If you collected the `.img`, **message me privately before sharing it**: raw filesystem data can contain identifiers. Please don’t post serial numbers, UUIDs, or full disk listings.
+Use the [ES updater-drive report form](https://github.com/qayshp/gulikit-updater/issues/new?template=es-updater-snapshot.yml) to confirm the model from its physical label and enter your OS and any measurements you have. Submitting the form opens a **public GitHub issue**. Don’t include serial numbers, UUIDs, full disk listings, or other drives’ details.
+
+If you collected the `.img`, select **Saved the 65,536-byte image locally** so a maintainer can follow up. Keep the file on your computer; **don’t attach it or post a download link**, since raw filesystem data can contain identifiers.
 
 If you’d rather not take a raw snapshot, the drive name and its **total and free space** are still helpful. No need to flash anything just for this. Thanks!

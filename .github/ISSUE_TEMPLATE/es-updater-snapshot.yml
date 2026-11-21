@@ -1,0 +1,74 @@
+name: Base ES updater-drive report
+description: Share read-only measurements from a base GuliKit ES in firmware update mode.
+title: "[ES updater] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping compare the base GuliKit ES updater drive with the Elves 2 (NS58).
+        Follow the [read-only snapshot guide](https://github.com/qayshp/gulikit-updater/blob/main/docs/es-updater-snapshot-request.md)
+        and stop before copying any firmware. Include whatever measurements you could collect,
+        even if you did not save a disk image.
+
+        **This issue is public.** Do not attach or link to a raw disk image, firmware, full
+        disk listing, or screenshot containing identifiers. Omit serial numbers, UUIDs,
+        and any data about other drives. If you captured an image, keep it locally and
+        indicate that below so a maintainer can follow up.
+  - type: input
+    id: operating-system
+    attributes:
+      label: Operating system
+      placeholder: "Example: Windows 11, Ubuntu 24.04, or macOS 27.2.1"
+    validations:
+      required: true
+  - type: input
+    id: volume-label
+    attributes:
+      label: Displayed updater drive name
+      description: Enter the name shown by your OS, or say if no name was shown.
+      placeholder: "Example: GuliKit 3.4 or NO NAME"
+  - type: input
+    id: disk-size
+    attributes:
+      label: Whole disk size in bytes
+      description: Use the physical USB disk size if known, not the filesystem's usable size.
+      placeholder: Enter the size shown by your OS
+  - type: input
+    id: logical-block-size
+    attributes:
+      label: Logical block size in bytes
+      description: If known, use the logical block or sector size, not the cluster or allocation unit size.
+      placeholder: Enter the size shown by your OS
+  - type: input
+    id: volume-details
+    attributes:
+      label: Filesystem type, total space, and free space
+      description: Include whichever values you can see and the units shown.
+      placeholder: "Example format: FAT, 500 KB total, 490 KB free"
+  - type: dropdown
+    id: capture-result
+    attributes:
+      label: Snapshot result
+      description: Do not upload or link the image here.
+      options:
+        - Saved the 65,536-byte image locally
+        - Shared measurements only
+        - Tried to capture an image but could not complete it
+    validations:
+      required: true
+  - type: input
+    id: observation
+    attributes:
+      label: Other observations
+      description: Optional. For example, note if the OS auto-mounted the drive or the read failed. No logs or personal information.
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked the physical label and this is a base GuliKit ES, not an ES Pro or ES Max.
+          required: true
+        - label: I did not copy firmware or run a firmware updater during this capture.
+          required: true
+        - label: I understand this report is public and have not included raw images or private identifiers.
+          required: true
