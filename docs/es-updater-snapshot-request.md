@@ -76,8 +76,9 @@ Press the controller’s rear **OFF** button and unplug it.
 
 ## What to share
 
-Use the [ES updater-drive report form](https://github.com/qayshp/gulikit-updater/issues/new?template=es-updater-snapshot.yml) to confirm the model from its physical label and enter your OS and any measurements you have. Submitting the form opens a **public GitHub issue**. Don’t include serial numbers, UUIDs, full disk listings, or other drives’ details.
+Use the [ES updater-drive report form](https://github.com/qayshp/gulikit-updater/issues/new?template=es-updater-snapshot.yml) to confirm the model from its physical label and enter your OS and any measurements you have. The **GitHub issue and any attachment will be public**. Don’t paste serial numbers, UUIDs, full disk listings, or other drives’ details into the report.
 
-If you collected the `.img`, select **Saved the 65,536-byte image locally** so a maintainer can follow up. Keep the file on your computer; **don’t attach it or post a download link**, since raw filesystem data can contain identifiers.
+- **With a snapshot:** If you’re sure the file came from the base ES updater drive and it is exactly **65,536 bytes**, use your computer’s ZIP or Compress option on the `.img` file. The ZIP should contain just that file, not a folder of logs, firmware, or other captures. Select **Attaching a verified ES snapshot** and add the ZIP in the optional upload field. GitHub [accepts ZIP attachments](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-githubs-form-schema#supported-file-types-and-size-limits), not bare `.img` files.
+- **Measurements only:** If you didn’t capture a file, are unsure which disk it came from, or would rather keep it private, leave the upload field blank. The drive name and its **total and free space** are still helpful.
 
-If you’d rather not take a raw snapshot, the drive name and its **total and free space** are still helpful. No need to flash anything just for this. Thanks!
+No need to flash anything just for this. Thanks!

@@ -10,10 +10,11 @@ body:
         and stop before copying any firmware. Include whatever measurements you could collect,
         even if you did not save a disk image.
 
-        **This issue is public.** Do not attach or link to a raw disk image, firmware, full
-        disk listing, or screenshot containing identifiers. Omit serial numbers, UUIDs,
-        and any data about other drives. If you captured an image, keep it locally and
-        indicate that below so a maintainer can follow up.
+        **This issue and its attachments are public.** Only attach a ZIP containing the
+        65,536-byte snapshot if you are sure it came from your base ES updater drive.
+        If the disk identity or capture is uncertain, leave the attachment blank and
+        share measurements instead. Please do not paste serial numbers, UUIDs, or full
+        disk listings, or upload firmware or data from other drives.
   - type: input
     id: operating-system
     attributes:
@@ -49,9 +50,10 @@ body:
     id: capture-result
     attributes:
       label: Snapshot result
-      description: Do not upload or link the image here.
+      description: Choose the option that describes what you are sharing.
       options:
-        - Saved the 65,536-byte image locally
+        - Attaching a verified ES snapshot
+        - Saved the image locally without attaching it
         - Shared measurements only
         - Tried to capture an image but could not complete it
     validations:
@@ -70,5 +72,15 @@ body:
           required: true
         - label: I did not copy firmware or run a firmware updater during this capture.
           required: true
-        - label: I understand this report is public and have not included raw images or private identifiers.
+        - label: I understand this report and any attachment will be public, and I have not included personal information or data from other drives.
           required: true
+        - label: If I attach a ZIP, I verified it contains only the 65,536-byte snapshot from the base ES updater drive.
+          required: true
+  - type: upload
+    id: updater-snapshot
+    attributes:
+      label: Verified ES snapshot (optional)
+      description: Attach a ZIP containing only the 65,536-byte .img from the confirmed ES updater drive. Leave blank if you are sharing measurements only.
+    validations:
+      required: false
+      accept: ".zip"
