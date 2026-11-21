@@ -43,6 +43,54 @@ struct FirmwareCatalogTests {
         #expect(try FirmwareCatalogParser.parse(kk3HTML, for: entry("ns38-main")).rawValue == "5.8")
     }
 
+    @Test func recognizesExpandedOfficialBodyHeadings() throws {
+        let es = "<p><span>GuliKit ES / ES PRO / ES MAX Controller V4.8&nbsp;Firmware&nbsp; (OTA update available via the app)</span></p>"
+        let tt = #"<p><strong>GuliKit TT PRO \ TT MAX V8.1.05 Firmware (OTA update available via the app)</strong></p>"#
+        let bluetooth = "<h1>KK3-NS37 BT Firmware V9.9</h1><p>“KK3-NS37” BT Firmware V3.23</p>"
+        let kk2t = "<p>KK2T-NS09T&nbsp; V5.8&nbsp;Firmware:</p>"
+        let cases: [([String], String, String, FirmwareReleaseComponent)] = [
+            (["es-main", "es-pro-main", "es-max-main"], es, "4.8", .main),
+            (["ns68-package", "ns69-package"], tt, "8.1.05", .package),
+            (["ns37-bluetooth"], bluetooth, "3.23", .bluetooth),
+            (["ns09t-main"], kk2t, "5.8", .main),
+        ]
+        for (ids, fragment, expected, component) in cases {
+            for id in ids {
+                let model = try entry(id)
+                #expect(model.component == component)
+                #expect(try FirmwareCatalogParser.parse(Data(fragment.utf8), for: model).rawValue == expected)
+            }
+        }
+    }
+
+    @Test func rejectsModelAndComponentMixupsAndTitleOnlyPages() throws {
+        let cases = [
+            ("es-main", "<p>ES PRO Controller V9.9 Firmware:</p>"),
+            ("es-pro-main", "<p>ES MAX Controller V9.9 Firmware:</p>"),
+            ("es-max-main", "<p>ES PRO and ES MAX receiver V9.9 Firmware:</p>"),
+            ("es-main", "<h1>ES Controller V9.9 Firmware</h1>"),
+            ("ns68-package", "<p>TT PRO V9.9.99 Firmware:</p>"),
+            ("ns69-package", #" <p>TT PRO \ TT MAX BT Firmware V9.9.99</p>"#),
+            ("ns37-bluetooth", "<p>KK3-NS37 V9.9 Firmware:</p>"),
+            ("ns37-bluetooth", "<p>KK3Pro-NS38 BT Firmware V9.9</p>"),
+            ("ns09t-main", "<p>KK2T-NS09T Bluetooth Firmware V9.9</p>"),
+        ]
+        for (id, html) in cases {
+            let model = try entry(id)
+            #expect(throws: (any Error).self) { try FirmwareCatalogParser.parse(Data(html.utf8), for: model) }
+        }
+    }
+
+    @Test func aCurrentTTPackageIsNotAnInstalledVersionComparison() async throws {
+        let fragment = Data(#"<p>TT PRO \ TT MAX V8.1.05 Firmware:</p>"#.utf8)
+        let model = try entry("ns68-package")
+        let service = FirmwareCatalogService(fetch: { _ in fragment })
+        let result = await service.check(entry: model, now: now)
+        #expect(result.source == .live && result.isCurrent(at: now))
+        #expect(result.latestVersion?.rawValue == "8.1.05")
+        #expect(result.advice(installed: "8.1", now: now) == .unknown)
+    }
+
     @Test func resolvesAcceleratedArticleAndStillSeparatesModels() async throws {
         let page = try entry("ns39-main").officialPage
         let asset = try #require(URL(string: "https://img.website.xin/pubsf/18023/18023503/cdn-static-pages/newsinfo/pc/887152_en-us.nocookie.html.Body.js?version=20261116171917"))

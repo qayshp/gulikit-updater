@@ -51,11 +51,24 @@ public struct FirmwareVersion: Codable, Comparable, Hashable, Sendable, CustomSt
     }
 }
 
+public enum FirmwareReleaseComponent: String, Codable, Sendable {
+    case main, bluetooth, package
+
+    var label: String {
+        switch self {
+        case .main: "Main firmware"
+        case .bluetooth: "Bluetooth firmware"
+        case .package: "Main + Bluetooth package"
+        }
+    }
+}
+
 public struct FirmwareCatalogEntry: Identifiable, Codable, Hashable, Sendable {
     public let id: String
     public let displayName: String
     public let modelCodes: [String]
-    public let componentLabel: String
+    public let component: FirmwareReleaseComponent
+    public var componentLabel: String { component.label }
     public let officialPage: URL
     public let bundledVersion: FirmwareVersion
     /// Date a bundled advisory snapshot was reviewed, not a live network check.
@@ -64,22 +77,36 @@ public struct FirmwareCatalogEntry: Identifiable, Codable, Hashable, Sendable {
 
 public enum FirmwareCatalog {
     /// Advisory model coverage. This does not grant firmware installation support.
-    /// Bluetooth/adapter firmware is deliberately outside this initial catalog.
     public static let entries: [FirmwareCatalogEntry] = {
-        let reviewed = ISO8601DateFormatter().date(from: "2026-11-18T00:00:00Z")!
+        let date = ISO8601DateFormatter()
+        let initial = date.date(from: "2026-11-18T00:00:00Z")!
+        let expanded = date.date(from: "2026-11-21T00:00:00Z")!
+        func release(_ model: String, _ name: String, _ code: String, _ page: Int, _ version: String,
+            _ component: FirmwareReleaseComponent = .main) -> FirmwareCatalogEntry {
+            FirmwareCatalogEntry(id: "\(model)-\(component.rawValue)", displayName: name, modelCodes: [code],
+                component: component, officialPage: URL(string: "https://www.gulikit.com/newsinfo/\(page).html")!,
+                bundledVersion: FirmwareVersion(version)!, bundledReviewedAt: expanded)
+        }
         return [
             FirmwareCatalogEntry(id: "ns58-main", displayName: "Elves 2", modelCodes: ["NS58"],
-                componentLabel: "Main firmware", officialPage: URL(string: "https://www.gulikit.com/newsinfo/1071651.html")!,
-                bundledVersion: FirmwareVersion("3.7")!, bundledReviewedAt: reviewed),
+                component: .main, officialPage: URL(string: "https://www.gulikit.com/newsinfo/1071651.html")!,
+                bundledVersion: FirmwareVersion("3.7")!, bundledReviewedAt: initial),
             FirmwareCatalogEntry(id: "ns59-main", displayName: "Elves 2 Pro", modelCodes: ["NS59"],
-                componentLabel: "Main firmware", officialPage: URL(string: "https://www.gulikit.com/newsinfo/1050198.html")!,
-                bundledVersion: FirmwareVersion("5.8")!, bundledReviewedAt: reviewed),
+                component: .main, officialPage: URL(string: "https://www.gulikit.com/newsinfo/1050198.html")!,
+                bundledVersion: FirmwareVersion("5.8")!, bundledReviewedAt: initial),
             FirmwareCatalogEntry(id: "ns39-main", displayName: "KK3 Max", modelCodes: ["NS39"],
-                componentLabel: "Main firmware", officialPage: URL(string: "https://www.gulikit.com/newsinfo/887152.html")!,
-                bundledVersion: FirmwareVersion("5.9")!, bundledReviewedAt: reviewed),
+                component: .main, officialPage: URL(string: "https://www.gulikit.com/newsinfo/887152.html")!,
+                bundledVersion: FirmwareVersion("5.9")!, bundledReviewedAt: initial),
             FirmwareCatalogEntry(id: "ns38-main", displayName: "KK3 Pro", modelCodes: ["NS38"],
-                componentLabel: "Main firmware", officialPage: URL(string: "https://www.gulikit.com/newsinfo/887152.html")!,
-                bundledVersion: FirmwareVersion("5.8")!, bundledReviewedAt: reviewed),
+                component: .main, officialPage: URL(string: "https://www.gulikit.com/newsinfo/887152.html")!,
+                bundledVersion: FirmwareVersion("5.8")!, bundledReviewedAt: initial),
+            release("es", "ES", "ES", 1076221, "4.8"),
+            release("es-pro", "ES Pro", "ES Pro", 1076221, "4.8"),
+            release("es-max", "ES Max", "ES Max", 1076221, "4.8"),
+            release("ns68", "TT Pro", "NS68", 3137265, "8.1.05", .package),
+            release("ns69", "TT Max", "NS69", 3137265, "8.1.05", .package),
+            release("ns37", "KK3", "NS37", 998404, "3.23", .bluetooth),
+            release("ns09t", "KK2T", "NS09T", 1050207, "5.8"),
         ]
     }()
 }
@@ -117,7 +144,8 @@ public struct FirmwareCatalogCheck: Codable, Sendable {
         return age >= 0 && age < FirmwareCatalogService.refreshInterval
     }
     public func advice(installed: String, now: Date = Date()) -> FirmwareVersionAdvice {
-        guard isCurrent(at: now), let latestVersion, let current = FirmwareVersion(installed) else { return .unknown }
+        guard FirmwareCatalog.entries.first(where: { $0.id == entryID })?.component == .main,
+              isCurrent(at: now), let latestVersion, let current = FirmwareVersion(installed) else { return .unknown }
         if current < latestVersion { return .newerAvailable }
         if current > latestVersion { return .installedNewer }
         return .upToDate
@@ -133,6 +161,7 @@ public enum FirmwareCatalogError: Error, LocalizedError, Sendable {
 
 public enum FirmwareCatalogParser {
     public static let maxPageBytes = 512 * 1024
+    private static let codeBearingMainEntries: Set<String> = ["ns58-main", "ns59-main", "ns38-main", "ns39-main"]
 
     /// Select the first explicit release heading for this model. GuliKit keeps
     /// older headings below the current release. A shared NS38/NS39 heading
@@ -141,7 +170,14 @@ public enum FirmwareCatalogParser {
         guard !data.isEmpty, data.count <= maxPageBytes, let html = String(data: data, encoding: .utf8) else {
             throw FirmwareCatalogError.invalid("Official firmware page is empty, too large, or not UTF-8")
         }
-        var text = replace(html, pattern: "(?is)<head\\b[^>]*>.*?</head\\s*>|<title\\b[^>]*>.*?</title\\s*>|<script\\b[^>]*>.*?</script\\s*>|<style\\b[^>]*>.*?</style\\s*>|<!--.*?-->", with: " ")
+        var text = replace(html, pattern: #"(?is)<(head|title|script|style|template|noscript|nav|footer)\b[^>]*>.*?</\1\s*>|<!--.*?-->"#, with: " ")
+        let usesCodeBearingHeading = codeBearingMainEntries.contains(entry.id)
+        if !usesCodeBearingHeading {
+            // The site repeats the listing title as an h1 (sometimes with a
+            // date) outside the article release text. Require an explicit
+            // model and component heading in the body, not the page headline.
+            text = replace(text, pattern: #"(?is)<h1\b[^>]*>.*?</h1\s*>"#, with: "\n")
+        }
         text = replace(text, pattern: "(?i)<br\\b[^>]*>|</(?:p|div|h[1-6]|li|section|article|title)\\s*>", with: "\n")
         text = replace(text, pattern: "<[^>]+>", with: " ")
         text = decodeEntities(text)
@@ -151,6 +187,12 @@ public enum FirmwareCatalogParser {
         }
         for rawLine in text.components(separatedBy: .newlines) {
             let line = rawLine.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+            if !usesCodeBearingHeading {
+                if let release = FirmwareReleaseHeading.parse(line, listing: false), release.matches(entry) {
+                    return release.version
+                }
+                continue
+            }
             guard line.count <= 250, line.lowercased().contains("firmware"),
                   entry.modelCodes.contains(where: { code in
                       line.range(of: "(?i)(?<![A-Z0-9])" + NSRegularExpression.escapedPattern(for: code) + "(?![A-Z0-9])",

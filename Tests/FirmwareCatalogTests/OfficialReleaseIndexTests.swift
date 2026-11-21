@@ -30,7 +30,14 @@ struct OfficialReleaseIndexTests {
             row("/newsinfo/1050198.html", "Elves 2 Pro V5.8 Firmware -2026.4.30"),
             row("/newsinfo/887152.html", #"KK3Max \ KK3Pro V5.9 Firmware -2026.3.2"#),
             row("/newsinfo/1071651.html", "Elves 2 V3.7 Firmware -2026.1.6"),
+            row("/newsinfo/1076221.html", "ES / ES PRO / ES MAX Controller V4.8 Firmware -2026.11.10"),
+            row("/newsinfo/3137265.html", #"GuliKit TT PRO \ TT MAX V8.1.05 Firmware -2026.11.16"#),
+            row("/newsinfo/998404.html", "KK3-NS37 BT Firmware V3.23 -2025.02.10"),
+            row("/newsinfo/1050207.html", "KK2T V5.8 Firmware -2025.11.28"),
             row("/newsinfo/915900.html", #"KK3Max \ KK3Pro\Elves2 Pro BT Firmware V5.07 -2025.12.10"#),
+            row("/newsinfo/126.html", "KK3-NS37 V99.9 Firmware"),
+            row("/newsinfo/127.html", "KK2T-NS09T BT Firmware V99.9"),
+            row("/newsinfo/128.html", #"TT PRO \ TT MAX BT Firmware V99.9.99"#),
             row("/newsinfo/123.html", "NS58 Bluetooth V9.9 Firmware"),
             "<!--" + row("/newsinfo/124.html", "NS58 V9.9 Firmware") + "-->",
             "<template>" + row("/newsinfo/125.html", "NS59 V9.9 Firmware") + "</template>"
@@ -39,6 +46,14 @@ struct OfficialReleaseIndexTests {
             let found = try OfficialReleaseIndex.candidates(in: html, for: model)
             #expect(found.pages == [model.officialPage])
             #expect(!found.incomplete)
+        }
+    }
+
+    @Test func recognizesAnESProOnlyListingWithoutAdvancingOtherESModels() throws {
+        let html = index(row(newURL.path, "ES PRO Controller V4.9 Firmware -2026.11.21"))
+        for id in ["es-main", "es-pro-main", "es-max-main"] {
+            let found = try OfficialReleaseIndex.candidates(in: html, for: entry(id))
+            #expect(found.pages == (id == "es-pro-main" ? [newURL] : []))
         }
     }
 

@@ -297,13 +297,18 @@ NS58_TEST_LINUX_ROOT=/path/to/linux-root-final.bin swift test
 
 ### Official release information
 
-**Firmware Versions & Official Downloads…** opens an advisory catalog for main
-firmware on NS58, NS59, NS39, and NS38. It looks for main-firmware article links
-on the first page of GuliKit's official download list, checks the article bodies,
+**Firmware Versions & Official Downloads…** opens an advisory catalog for 11
+models: Elves 2, Elves 2 Pro, KK3 Max, KK3 Pro, ES, ES Pro, ES Max, TT Pro,
+TT Max, standard KK3, and KK2T. It looks for matching model and component
+articles on the first page of GuliKit's official download list, checks the bodies,
 and retains the known model pages as a fallback. It uses a 24-hour success
 cache and five-minute failure backoff, and labels incomplete listing checks.
 The NS39-only V5.9 heading on the shared KK3 page does not advance the NS38
-record. Bluetooth firmware is not compared in this initial catalog.
+record. The TT release is labeled as a combined main and Bluetooth package;
+the standard KK3's verified official download is labeled Bluetooth only.
+Neither is compared to installed main firmware. See the [catalog coverage
+and official pages](docs/firmware-version-checking.md) and [controller update
+methods and research candidates](docs/controller-update-methods.md).
 
 After a user-requested NS58 read-only inspection and physical-model
 confirmation, a fresh catalog observation can report newer firmware, a matching

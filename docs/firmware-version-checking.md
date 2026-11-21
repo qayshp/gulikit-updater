@@ -1,30 +1,35 @@
 # Firmware version advisories and catalog maintenance
 
-The release catalog answers a deliberately narrow question: **what main
-firmware version is announced in the checked official GuliKit listings?**
+The release catalog answers a deliberately narrow question: **what firmware
+release is announced for this model and component in the checked official listings?**
 It does not discover attached models, infer compatibility, download firmware,
 change pinned package/BIN hashes, or authorize an installation.
 
-## Initial scope
+## Catalog coverage
 
-The bundled catalog initially covers main firmware for four model families:
-`NS58`, `NS59`, `NS39`, and `NS38`. Each entry keeps its official page, component
-label, announced version, and bundled-review timestamp together. Entries do not
-combine main firmware with Bluetooth, receiver, or other separately versioned
-components.
+Each of the 11 entries keeps its official page, component, announced
+version, and bundled-review timestamp together. If GuliKit publishes one
+version for a combined package, the catalog does not split it into inferred
+chip versions. Receiver firmware is separate and is not included.
 
-| Entry | Model | Bundled main-version snapshot | Official page for manual review |
+| Entry | Model | Bundled component and version | Official page for manual review |
 | --- | --- | --- | --- |
-| `ns58-main` | Elves 2 / NS58 | 3.7 | [Elves 2 firmware](https://www.gulikit.com/newsinfo/1071651.html) |
-| `ns59-main` | Elves 2 Pro / NS59 | 5.8 | [Elves 2 Pro firmware](https://www.gulikit.com/newsinfo/1050198.html) |
-| `ns39-main` | KK3 Max / NS39 | 5.9 | [KK3 firmware](https://www.gulikit.com/newsinfo/887152.html) |
-| `ns38-main` | KK3 Pro / NS38 | 5.8 | [KK3 firmware](https://www.gulikit.com/newsinfo/887152.html) |
+| `ns58-main` | Elves 2 / NS58 | Main 3.7 | [Elves 2 firmware](https://www.gulikit.com/newsinfo/1071651.html) |
+| `ns59-main` | Elves 2 Pro / NS59 | Main 5.8 | [Elves 2 Pro firmware](https://www.gulikit.com/newsinfo/1050198.html) |
+| `ns39-main` | KK3 Max / NS39 | Main 5.9 | [KK3 firmware](https://www.gulikit.com/newsinfo/887152.html) |
+| `ns38-main` | KK3 Pro / NS38 | Main 5.8 | [KK3 firmware](https://www.gulikit.com/newsinfo/887152.html) |
+| `es-main`, `es-pro-main`, `es-max-main` | ES, ES Pro, ES Max | Main 4.8 | [ES series firmware](https://www.gulikit.com/newsinfo/1076221.html) |
+| `ns68-package`, `ns69-package` | TT Pro / NS68, TT Max / NS69 | Main + Bluetooth package 8.1.05 | [TT series package](https://www.gulikit.com/newsinfo/3137265.html) |
+| `ns37-bluetooth` | Standard KK3 / NS37 | Bluetooth 3.23, no verified main listing | [KK3 Bluetooth firmware](https://www.gulikit.com/newsinfo/998404.html) |
+| `ns09t-main` | KK2T / NS09T | Main 5.8 | [KK2T main firmware](https://www.gulikit.com/newsinfo/1050207.html) |
 
 These are bundled advisory values, not a promise that the website is still
 current. NS39 and NS38 deliberately use separate entries despite sharing a
 page: an NS39-only heading must not advance NS38. The parser selects the first
 explicit matching model/component release heading rather than taking the
 largest number found anywhere in the page or changelog.
+The [controller update method comparison](controller-update-methods.md)
+distinguishes official instructions from hardware validation.
 
 Only the validated **NS58 / Elves 2** USB update path is supported by the updater.
 Having a release-catalog entry for another model does not add USB-write support
@@ -51,7 +56,8 @@ a retained result cannot stay current after its 24-hour window.
 
 **Open Official Firmware Page** opens either the verified official source
 article or the bundled model page in the normal browser. Complete any download
-verification there, then use **Import ZIP or BIN…** in the main window. The app
+verification there. Only for the supported NS58 V3.7 package, use **Import ZIP or BIN…**
+in the main window. The app
 reads a bounded, user-selected local file, extracts only the expected BIN in
 memory, and validates it against the existing V3.7 pin. It neither saves nor
 executes archive contents. The optional, third-party mirror retains its
@@ -61,13 +67,16 @@ whole-archive and BIN pins.
 
 The checker reads the first page of GuliKit's public download index and
 shares a recent response across model checks, alongside each model's known
-article. Main-firmware titles identify
+article. Titles matching both the model and component identify
 possible URLs, not firmware versions. An article must confirm the actual model
 and version in its body, and an older listing cannot replace a higher verified
 version. The checker limits requests and does not crawl historical pages or
 follow download links. If it cannot check the index or verify potential
 listings, it can still show known article information with a coverage warning
 but does not use that incomplete result for an “up to date” comparison.
+In particular, a successful read of a known KK2T or standard KK3 article
+can show a live announced version even when no matching article appears on
+the first page. The result is marked as limited coverage.
 
 Read-only NS58 inspection keeps its existing device/transport/capacity gates,
 then reads the FAT12 root label separately from the strict writer validator.

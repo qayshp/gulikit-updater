@@ -38,7 +38,7 @@ final class FirmwareCatalogWindowController: NSWindowController {
         let title = NSTextField(labelWithString: "Official firmware announcements")
         title.font = .boldSystemFont(ofSize: 21)
         let scope = NSTextField(wrappingLabelWithString:
-            "Main-controller firmware only. Catalog coverage is not installation support: this app still writes only the verified NS58 V3.7 transaction. No Bluetooth firmware is compared.\n"
+            "Catalog entries distinguish main firmware, Bluetooth firmware, and combined packages. This app still installs only the verified NS58 V3.7 firmware.\n"
             + "Checks read public GuliKit pages only. Download in your browser and complete any CAPTCHA there; no firmware is downloaded by this checker.")
         for entry in FirmwareCatalog.entries { modelPicker.addItem(withTitle: "\(entry.displayName) · \(entry.componentLabel)") }
         modelPicker.target = self; modelPicker.action = #selector(selectionChanged)
@@ -164,10 +164,17 @@ final class FirmwareCatalogWindowController: NSWindowController {
         let latest = current?.latestVersion?.rawValue ?? entry.bundledVersion.rawValue
         let checked = current?.checkedAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "No successful live check"
         let reviewed = entry.bundledReviewedAt.formatted(date: .abbreviated, time: .omitted)
-        var lines = ["\(entry.displayName) · \(entry.modelCodes.joined(separator: ", ")) · \(entry.componentLabel)",
-            "Latest observed/listed: \(latest)",
+        let model = entry.modelCodes == [entry.displayName] ? entry.displayName
+            : "\(entry.displayName) · \(entry.modelCodes.joined(separator: ", "))"
+        var lines = ["\(model) · \(entry.componentLabel)",
+            "\(entry.component == .package ? "Latest observed package release" : "Latest observed/listed"): \(latest)",
             "Information source: \(current.map { String(describing: $0.source) } ?? "bundled") · \(observationStatus)",
             "Last successful website check: \(checked)", "Bundled snapshot reviewed: \(reviewed)"]
+        if entry.component == .package {
+            lines.append("GuliKit lists this as one package release. It is not a separate installed version for either chip.")
+        } else if entry.component == .bluetooth {
+            lines.append("This official listing covers Bluetooth only; it does not identify the main firmware version.")
+        }
         if entry.id == "ns58-main", let installedVersion {
             lines.append("Installed label: \(installedLabel ?? installedVersion)")
             if physicalModelConfirmed, let current {
