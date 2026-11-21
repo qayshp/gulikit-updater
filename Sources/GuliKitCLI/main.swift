@@ -48,17 +48,36 @@ enum GuliKitCLI {
             print("Saved: \(saved.path)")
             print("SHA-256: \(NS58FAT12.sha256(firmware))")
             print("Verified package and firmware; no device opened")
+        case "inspect-image":
+            guard arguments.count == 3, arguments[1] == "--image" else {
+                throw NS58Error.invalid("usage: gulikit inspect-image --image /path/to/saved.img")
+            }
+            let image = try NS58SavedImage(contentsOf: URL(fileURLWithPath: arguments[2]))
+            let inspection = try image.inspect()
+            print("Image size: \(image.bytes.count) bytes")
+            print("Root volume label: \(inspection.version.volumeLabel)")
+            print("Reported firmware version: \(inspection.version.version ?? "unknown")")
+            switch inspection.baseline {
+            case .matching:
+                print("Offline plan baseline: matches the NS58 V3.7 template")
+            case .tooShort(let requiredBytes):
+                print("Offline plan baseline: matching metadata, but requires at least \(requiredBytes) bytes")
+            case .rejected(let reason):
+                print("Offline plan baseline: not compatible (\(reason))")
+            }
+            print("Saved image only; the label and baseline do not identify a physical controller or authorize installation.")
         case "plan":
             let options = try parsePlanOptions(Array(arguments.dropFirst()))
-            let imageURL = try regularFile(options.image)
-            let firmwareURL = try regularFile(options.firmware)
-            let baseline = try Data(contentsOf: imageURL)
-            let firmware = try Data(contentsOf: firmwareURL)
+            let baseline = try NS58SavedImage(contentsOf: URL(fileURLWithPath: options.image)).bytes
             let inspection = try NS58FAT12.inspectBaseline(baseline)
+            guard baseline.count >= NS58SavedImage.minimumPlanByteCount else {
+                throw NS58Error.invalid("Offline planning requires at least \(NS58SavedImage.minimumPlanByteCount) bytes of the image")
+            }
+            let firmware = try SupportedFirmware.importFirmware(from: URL(fileURLWithPath: options.firmware))
             let plan = try NS58FAT12.makeUpdatePlan(
                 baseline: baseline,
                 firmware: firmware,
-                firmwareFilename: firmwareURL.lastPathComponent
+                firmwareFilename: NS58Constants.firmwareName
             )
             print("Volume: \(inspection.volumeLabel)")
             print("Sector size: \(inspection.bytesPerSector) bytes")
@@ -72,15 +91,6 @@ enum GuliKitCLI {
         default:
             throw NS58Error.invalid("unknown command \(command); run gulikit --help")
         }
-    }
-
-    private static func regularFile(_ path: String) throws -> URL {
-        let url = URL(fileURLWithPath: path).standardizedFileURL
-        let values = try url.resourceValues(forKeys: [.isRegularFileKey])
-        guard values.isRegularFile == true else {
-            throw NS58Error.invalid("input must be a regular file: \(url.path)")
-        }
-        return url
     }
 
     private static func parsePlanOptions(_ arguments: [String]) throws -> (image: String, firmware: String) {
@@ -163,9 +173,11 @@ enum GuliKitCLI {
 
         gulikit verify /path/to/firmware.zip-or-bin
         gulikit download --directory /existing/output/directory
-        gulikit plan --image /path/to/baseline.img --firmware /path/to/NS58_Elves2_V3.7.bin
+        gulikit inspect-image --image /path/to/saved.img
+        gulikit plan --image /path/to/baseline.img --firmware /path/to/firmware.zip-or-bin
         gulikit releases [--refresh] [--json]
 
+        inspect-image and plan read saved image files only, never a live USB device.
         releases is offline by default; --refresh reads official release metadata only.
         Announced versions are advisory and do not change install eligibility or hashes.
         USB access and updating are provided by the GuliKitUpdater app.

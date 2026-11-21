@@ -79,6 +79,7 @@ private final class App: NSObject, NSApplicationDelegate {
     private var busy = false
     private var writingRegistryID: UInt64?
     private var writesAcknowledged = false
+    private var supportHistory = NS58SupportSummary.History()
     private enum USBOperation: String { case inspection, release, installation }
     private var usbOperation: USBOperation?
     private var operationRegistryID: UInt64?
@@ -117,6 +118,10 @@ private final class App: NSObject, NSApplicationDelegate {
         let appMenu = NSMenuItem()
         menu.addItem(appMenu)
         appMenu.submenu = NSMenu()
+        let supportItem = appMenu.submenu?.addItem(withTitle: "Copy Support Summary",
+            action: #selector(copySupportSummary), keyEquivalent: "")
+        supportItem?.target = self
+        appMenu.submenu?.addItem(.separator())
         appMenu.submenu?.addItem(withTitle: "Quit GuliKit Updater", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         NSApp.mainMenu = menu
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 840),
@@ -128,6 +133,7 @@ private final class App: NSObject, NSApplicationDelegate {
         let deviceButtons = NSStackView(views: [inspectButton, resetInspectButton, releaseButton])
         let firmwareButtons = NSStackView(views: [downloadButton, fileButton, updateButton, copyLogButton])
         downloadButton.title = "Mirror V3.7 (optional)"
+        copyLogButton.toolTip = "Copies the full diagnostic log, which can contain device identifiers and file details. For sharing, use Copy Support Summary in the app menu."
         deviceButtons.spacing = 10; firmwareButtons.spacing = 10
         firmwareStatus.textColor = .secondaryLabelColor
         for (button, action) in [(inspectButton, #selector(inspect)), (fileButton, #selector(chooseFirmware)),
@@ -179,9 +185,13 @@ private final class App: NSObject, NSApplicationDelegate {
         Task {
             do {
                 let existing = try await AAUSBAccessoryManager.shared.registerListener(listener, matchingCriteria: [criteria])
+                supportHistory.record(.listenerRegistered)
                 log("Listener registered. Matching accessories: \(existing.count).")
                 for accessory in existing { connected(accessory) }
-            } catch { fail(error) }
+            } catch {
+                supportHistory.record(.listenerFailed)
+                fail(error)
+            }
         }
         if ProcessInfo.processInfo.arguments.contains("--diagnose") {
             Task { try? await Task.sleep(for: .seconds(8)); NSApp.terminate(nil) }
@@ -224,6 +234,31 @@ private final class App: NSObject, NSApplicationDelegate {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(logView.string, forType: .string)
     }
+    private var supportActivity: NS58SupportSummary.Activity {
+        switch usbOperation {
+        case .inspection: .inspecting
+        case .release: .releasing
+        case .installation: .installing
+        case nil: busy ? .preparingFirmware : .idle
+        }
+    }
+    @objc private func copySupportSummary() {
+        let inspection: NS58SupportSummary.Inspection = session.map {
+            .passed(version: $0.installedVersion, baselineMatched: $0.installationBlockReason == nil)
+        } ?? .none
+        let recoveryReason = accessories.count == 1
+            ? accessories.values.first.flatMap { safety.reason(for: $0.registryID) } : nil
+        let summary = NS58SupportSummary.render(os: ProcessInfo.processInfo.operatingSystemVersion,
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+            build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+            candidateCount: accessories.count, activity: supportActivity, inspection: inspection,
+            modelConfirmed: modelConfirmation.state == .on, firmwareVerified: selectedFirmware != nil,
+            installEnabled: updateButton.isEnabled, recoveryReason: recoveryReason, history: supportHistory)
+        NSPasteboard.general.clearContents()
+        if NSPasteboard.general.setString(summary, forType: .string) {
+            log("Support summary copied (filtered state; full log not copied).")
+        }
+    }
     @objc private func showFirmwareCatalog() { catalog.present() }
     @objc func confirmPhysicalModel() {
         guard !busy, let opened = session,
@@ -244,6 +279,7 @@ private final class App: NSObject, NSApplicationDelegate {
         }
         if modelConfirmedRegistryID == registryID { modelConfirmedRegistryID = nil }
         let effectiveReason = safety.reason(for: registryID) ?? reason
+        supportHistory.record(.recoveryRequired(effectiveReason))
         let guidance = usbOperation == .installation
             ? "Installation is still in progress: keep the controller connected and wait for completion. No retry is permitted."
             : Self.recoveryInstructions
@@ -320,6 +356,8 @@ private final class App: NSObject, NSApplicationDelegate {
             IORegistryEntryIDMatching(accessory.registryID))
         let physicallyPresent = service != IO_OBJECT_NULL
         if physicallyPresent { IOObjectRelease(service) }
+        supportHistory.record(.accessoryChanged(assigned: connected, registryPresent: physicallyPresent,
+            activity: supportActivity))
         let delay = (ProcessInfo.processInfo.systemUptime - sourceTime) * 1000
         log("Accessory event #\(sequence) \(connected ? "connect" : "disconnect") "
             + "deliveryDelayMs=\(String(format: "%.1f", delay)) "
@@ -403,11 +441,13 @@ private final class App: NSObject, NSApplicationDelegate {
         inspectionFailure = nil
         usbOperation = .inspection
         operationRegistryID = accessory.registryID
+        supportHistory.record(.inspectionStarted(resetRequested: resetTransport))
         busy = true; refreshButtons(); log("Requesting exclusive USB access; approve the macOS prompt.")
         if resetTransport { log("Explicit one-shot BOT transport initialization requested; no firmware writes.") }
         Task {
             do {
                 let device = try await accessory.open(serviceQueue: nil)
+                supportHistory.record(.exclusiveClaimGranted)
                 let deviceTraceID = GUUSBTransport.traceDeviceLifetime(device)
                 let mode = resetTransport ? "explicit transport initialization and inspection" : "read-only inspection"
                 log("Exclusive USB claim granted, device trace \(deviceTraceID). Opening the NS58 mass-storage interface for \(mode).")
@@ -453,6 +493,7 @@ private final class App: NSObject, NSApplicationDelegate {
                         throw NS58Error.invalid("Accessory ownership changed during inspection; stale result discarded")
                     }
                     session = opened
+                    supportHistory.record(.inspectionPassed)
                     writingRegistryID = nil
                     status.stringValue = opened.installedVersion == nil
                         ? "Volume label read · \(opened.label). Installed version is unknown; Install remains disabled."
@@ -472,6 +513,7 @@ private final class App: NSObject, NSApplicationDelegate {
                     throw error
                 }
             } catch {
+                supportHistory.record(.inspectionFailed)
                 failUSB(error, registryID: accessory.registryID, reason: .inspectionFailed)
             }
         }
@@ -602,6 +644,7 @@ private final class App: NSObject, NSApplicationDelegate {
                         try opened.transport.writeBlocks(atLBA: 1, data: plan.metadataPayload)
                     }.value
                     writesAcknowledged = true
+                    supportHistory.record(.writesAcknowledged)
                     log("Both BOT writes acknowledged. Waiting up to 60 seconds for physical USB disconnect.")
                     var disappeared = false
                     for _ in 0..<120 {
@@ -614,6 +657,7 @@ private final class App: NSObject, NSApplicationDelegate {
                     status.stringValue = disappeared
                         ? "Both writes acknowledged; USB device disappeared. Confirm automatic power-off, then restart and inspect."
                         : "Writes acknowledged; no physical USB disconnect in 60 seconds. Update unconfirmed."
+                    supportHistory.record(.updateObservation(registryDisappeared: disappeared))
                     log(status.stringValue)
                     opened.transport.close()
                     try? await opened.accessory.close()
@@ -623,6 +667,7 @@ private final class App: NSObject, NSApplicationDelegate {
                     opened.transport.close()
                     try? await opened.accessory.close()
                     session = nil
+                    supportHistory.record(.installFailed)
                     fail(NS58Error.invalid("Transfer failed; update unconfirmed: \(error). Reconnect before another attempt."))
                 }
             }

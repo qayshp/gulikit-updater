@@ -1,8 +1,113 @@
+import Darwin
 import Foundation
 import Testing
 @testable import NS58Core
 
 struct NS58CoreTests {
+    @Test(arguments: [
+        NS58SavedImage.minimumPlanByteCount,
+        NS58Constants.reportedDeviceBytes,
+        NS58SavedImage.maximumByteCount,
+    ])
+    func savedImagePassesOfflineBaselineForSupportedLengths(_ length: Int) throws {
+        try withImageDirectory { directory in
+            let url = directory.appendingPathComponent("saved.img")
+            var bytes = makeBaseline()
+            if length <= bytes.count {
+                bytes = Data(bytes.prefix(length))
+            } else {
+                bytes.append(Data(repeating: 0, count: length - bytes.count))
+            }
+            try bytes.write(to: url)
+            let image = try NS58SavedImage(contentsOf: url)
+            let inspection = try image.inspect()
+            #expect(image.bytes == bytes)
+            #expect(inspection.version.version == "3.7")
+            #expect(inspection.baseline == .matching)
+            #expect(try Data(contentsOf: url) == bytes)
+        }
+    }
+
+    @Test(arguments: ["2.5", "3.8", "4.0"])
+    func savedImageDistinguishesReportedVersionFromPlanCompatibility(_ version: String) throws {
+        try withImageDirectory { directory in
+            let url = directory.appendingPathComponent("saved.img")
+            let root = NS58Constants.rootDirectoryLBA * NS58Constants.bytesPerSector
+            var bytes = makeBaseline()
+            bytes.replaceSubrange(root..<(root + 11), with: Array("GuliKit \(version)".utf8))
+            try bytes.write(to: url)
+            let inspection = try NS58SavedImage(contentsOf: url).inspect()
+            #expect(inspection.version.version == version)
+            #expect(inspection.baseline == .rejected(reason: "root volume label is not GuliKit 3.7"))
+        }
+    }
+
+    @Test
+    func savedImageCanReportMatchingMetadataInShortRootCapture() throws {
+        try withImageDirectory { directory in
+            let url = directory.appendingPathComponent("root.img")
+            let rootEnd = (NS58Constants.rootDirectoryLBA + 4) * NS58Constants.bytesPerSector
+            try Data(makeBaseline().prefix(rootEnd)).write(to: url)
+            let inspection = try NS58SavedImage(contentsOf: url).inspect()
+            #expect(inspection.version.version == "3.7")
+            #expect(inspection.baseline == .tooShort(requiredBytes: NS58SavedImage.minimumPlanByteCount))
+        }
+    }
+
+    @Test
+    func savedImageReportsMetadataMismatchDespiteKnownVersion() throws {
+        try withImageDirectory { directory in
+            let url = directory.appendingPathComponent("saved.img")
+            var bytes = makeBaseline()
+            bytes[8_192 + 100] = 1
+            try bytes.write(to: url)
+            let inspection = try NS58SavedImage(contentsOf: url).inspect()
+            #expect(inspection.version.version == "3.7")
+            #expect(inspection.baseline == .rejected(reason: "baseline FAT copies differ"))
+        }
+    }
+
+    @Test(arguments: [0, NS58SavedImage.maximumByteCount + 1])
+    func savedImageRejectsOutOfBoundsFileSize(_ length: Int) throws {
+        try withImageDirectory { directory in
+            let url = directory.appendingPathComponent("saved.img")
+            try Data(repeating: 0, count: length).write(to: url)
+            #expect(throws: NS58Error.self) { try NS58SavedImage(contentsOf: url) }
+        }
+    }
+
+    @Test
+    func savedImageRejectsDirectoryPipeAndSymlink() throws {
+        try withImageDirectory { directory in
+            let url = directory.appendingPathComponent("saved.img")
+            try makeBaseline().write(to: url)
+            let symlink = directory.appendingPathComponent("link.img")
+            try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: url)
+            let pipe = directory.appendingPathComponent("pipe.img")
+            try #require(pipe.withUnsafeFileSystemRepresentation { mkfifo($0, 0o600) == 0 })
+            for invalid in [directory, symlink, pipe] {
+                #expect(throws: NS58Error.self) { try NS58SavedImage(contentsOf: invalid) }
+            }
+        }
+    }
+
+    @Test
+    func savedImageRejectsMalformedRootAtInspection() throws {
+        try withImageDirectory { directory in
+            let url = directory.appendingPathComponent("saved.img")
+            try Data(makeBaseline().prefix(512)).write(to: url)
+            let image = try NS58SavedImage(contentsOf: url)
+            #expect(throws: NS58Error.self) { try image.inspect() }
+        }
+    }
+
+    private func withImageDirectory(_ work: (URL) throws -> Void) throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try work(directory)
+    }
+
     @Test
     func rejectsWrongFirmwareIdentity() throws {
         let firmware = Data(repeating: 0, count: NS58Constants.firmwareSize)

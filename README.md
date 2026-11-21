@@ -144,7 +144,14 @@ read, the log explicitly reports that only the current-process gate is active.
 There is no Clear Error / Retry button that silently reuses a failed session.
 Invalid local firmware or download failures do not quarantine a healthy USB
 session. Method-level and modal-target guards supplement disabled buttons.
-Copy Log includes timestamps for reporting a failure.
+Use **GuliKit Updater → Copy Support Summary** to share current readiness and
+up to 20 recent USB events from this app session. After an intermittent
+disconnect, copy it before relaunching: it distinguishes detachment from the app
+from the physical registry entry no longer being present. It omits serial
+numbers, registry IDs, local paths, raw errors, and firmware bytes. Copying it
+does not claim, inspect, reset, or write to the controller. The separate **Copy
+Log** button includes timestamps and detailed errors; review it for identifiers
+and file details before sharing.
 
 ### Minimal non-flashing AccessoryAccess reproduction
 
@@ -262,14 +269,24 @@ phase-by-phase evidence and limits.
 ```sh
 .build/debug/gulikit verify /path/to/NS58_Elves2_V3.7.zip
 .build/debug/gulikit download --directory /existing/output/directory
-.build/debug/gulikit plan --image /path/to/baseline.img --firmware /path/to/NS58_Elves2_V3.7.bin
+.build/debug/gulikit inspect-image --image /path/to/saved.img
+.build/debug/gulikit plan --image /path/to/baseline.img --firmware /path/to/NS58_Elves2_V3.7.zip
 swift test
 ```
 
-`plan` accepts a regular image file and prints the proposed sector writes and
-hashes. Tests cover malformed baselines, destination allocation, firmware
-identity, and truncated image rejection. To run the captured Linux comparison
-test, supply local fixtures (copyrighted firmware is not committed):
+`inspect-image` reads the root-directory label, even when Finder would call the
+volume `NO NAME`. It reports the observed version separately from whether the
+image matches the strict V3.7 template. A readable older-version label is a
+successful observation, not a compatible plan or model identification. Both
+commands accept bounded, regular image files only: no device nodes or symlinks,
+and no mounting or USB operations. A contiguous capture from sector zero is
+enough if it contains the required data: 28,672 bytes for a complete root
+directory or at least 94,208 bytes for `plan`. `plan` accepts the same verified
+ZIP or BIN as `verify` and prints the proposed sector writes and hashes without
+writing them.
+
+To run the captured Linux comparison test, supply local fixtures (copyrighted
+firmware is not committed):
 
 ```sh
 NS58_TEST_FIRMWARE=/path/to/NS58_Elves2_V3.7.bin \
